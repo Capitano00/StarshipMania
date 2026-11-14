@@ -76,11 +76,6 @@ body:has(.metrics){background:#09131c}
 .verdict.worse{color:#2a1410;background:var(--bad);border-color:var(--bad);font-weight:600}
 .verdict.pending{color:#6f8893;border-style:dashed}
 
-/* Win rate */
-.winrate{display:flex;align-items:center;gap:10px}
-.parity{position:absolute;top:-4px;bottom:-4px;width:2px;background:#cddbdc;border-radius:1px}
-.scale{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin:6px 68px 0 0}
-
 /* Segmented controls */
 .controls{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;margin-bottom:10px}
 .segs{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;padding:3px;gap:2px;background:#0f1f2a}

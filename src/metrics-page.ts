@@ -88,17 +88,6 @@ function voiceCard(ctx:Ctx,c:Comparison){
    <figure class="chart"><figcaption>Phrases understood, by type</figcaption>${groups}</figure><div class="deltas">${chips}</div></article>`;
 }
 
-function winRateCard(ctx:Ctx,c:Comparison){
-  const rows=rowsOf(ctx,c).filter(r=>r.source==='feature');
-  const win=c.metrics.find(m=>/win rate/i.test(m.name));const value=typeof win?.after==='number'?win.after:null;
-  const body=value===null?`<i class="ghost">awaiting the AutoScientist run</i>`:`<i class="fill after" data-w="${pct(value,100).toFixed(1)}" data-tip="Adapted model wins ${value}% of head-to-head comparisons" tabindex="0"></i>`;
-  return `<article class="m-card"><div class="card-head"><h3>${esc(c.title)}</h3>${status(rows)}</div>${legend(c)}
-   <figure class="chart"><figcaption>Adapted model's win rate against the base model</figcaption>
-    <div class="winrate"><span class="track tall">${body}<b class="parity" style="left:50%" data-tip="50% = no better than the base model" tabindex="0"></b></span><span class="hval">${value===null?'–':fmt(value,'%')}</span></div>
-    <div class="scale"><span>0%</span><span>50% · parity</span><span>100%</span></div></figure>
-   <div class="deltas">${rows.filter(r=>r!==rows.find(x=>x.name===win?.name)).map(delta).join('')}</div></article>`;
-}
-
 /** Supervisor agent: what happened to its tool calls and tasks in the drones-only round. Before it existed, so before is "not possible". */
 function supervisorCard(ctx:Ctx,c:Comparison){
   const rows=rowsOf(ctx,c).filter(r=>r.source==='agent');
@@ -113,7 +102,7 @@ function supervisorCard(ctx:Ctx,c:Comparison){
 }
 
 function agentSection(ctx:Ctx){
-  const cards=ctx.comparisons.filter(c=>c.id!=='lazy-three').map(c=>c.agentBenchmark==='supervisor'?supervisorCard(ctx,c):c.agentBenchmark==='voice'?voiceCard(ctx,c):c.metrics.some(m=>/win rate/i.test(m.name))?winRateCard(ctx,c):c.metrics.length?`<article class="m-card"><div class="card-head"><h3>${esc(c.title)}</h3>${status(rowsOf(ctx,c))}</div><div class="deltas">${rowsOf(ctx,c).filter(r=>r.source==='feature').map(delta).join('')}</div></article>`:'').join('');
+  const cards=ctx.comparisons.filter(c=>c.id!=='lazy-three').map(c=>c.agentBenchmark==='supervisor'?supervisorCard(ctx,c):c.agentBenchmark==='voice'?voiceCard(ctx,c):c.metrics.length?`<article class="m-card"><div class="card-head"><h3>${esc(c.title)}</h3>${status(rowsOf(ctx,c))}</div><div class="deltas">${rowsOf(ctx,c).filter(r=>r.source==='feature').map(delta).join('')}</div></article>`:'').join('');
   return cards?section('agent','01 / AGENT & MODEL','How well they work',`<div class="grid-2">${cards}</div>`):'';
 }
 
@@ -230,8 +219,8 @@ function buildSection(m:Metrics){
   const ratio=m.code.app.lines?(m.code.tests.lines/m.code.app.lines).toFixed(2):'–';
   return section('build','06 / BUILD & CODE',`Build ${m.build.ok?'passing':'failing'} in ${m.build.seconds}s`,`<article class="m-card">
    <figure class="chart"><figcaption>What the game downloads (compressed)</figcaption>
-    <div class="stack"><i class="seg-first" data-w="${pct(first,total).toFixed(1)}" data-tip="At page start: ${kB(first)}" tabindex="0"></i><i class="seg-later" data-w="${pct(later,total).toFixed(1)}" data-tip="In the background (3D engine): ${kB(later)}" tabindex="0"></i></div>
-    <p class="legend"><span><i class="sw after"></i>At page start · ${kB(first)}</span><span><i class="sw later"></i>In the background · ${kB(later)}</span></p></figure>
+    <div class="stack"><i class="seg-first" data-w="${pct(first,total).toFixed(1)}" data-tip="At page start: ${kB(first)}" tabindex="0"></i><i class="seg-later" data-w="${pct(later,total).toFixed(1)}" data-tip="Later or on demand (3D engine in the background; voice client only when voice starts): ${kB(later)}" tabindex="0"></i></div>
+    <p class="legend"><span><i class="sw after"></i>At page start · ${kB(first)}</span><span><i class="sw later"></i>Later or on demand · ${kB(later)}</span></p></figure>
    <div class="m-stats"><div><strong>${count(m.code.app.lines)}</strong><span>lines of game code</span></div><div><strong>${count(m.code.tests.lines)}</strong><span>lines of tests</span></div><div><strong>${ratio}</strong><span>test lines per code line</span></div></div></article>`);
 }
 

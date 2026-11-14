@@ -15,7 +15,7 @@ That builds the game, runs every test and writes `public/metrics.json` and `dist
 | `performance.json` | Benchmark runs: frame rate, load time, memory | Whoever runs the benchmark |
 | `baseline-failures.json` | The 71 test failures inherited from ProjectZero v0.4.3 | Nobody, unless an inherited failure is fixed |
 
-## Comparing your change (voice agent, Adaption model, or anything else)
+## Comparing your change (voice agent, supervisor agent, or anything else)
 
 1. **The "before" is already saved** as `snapshots/before-integrations.json` and the `after-lazy-three` benchmark run.
 2. **On a branch that includes your change and this metrics work**, save the "after" snapshot:
@@ -38,7 +38,7 @@ Measure before and after on the same machine, browser and scenario, or the compa
 
 **1. Agent & model: how well the agent or model itself works.**
 - *Voice (automatic):* every `npm run metrics` runs the labelled phrase list in `src/bench/voice-eval.ts` through `parseVoiceCommand` in `src/voice.ts`. It reports how many phrases were understood, wrong orders, missed commands and false triggers, split into clear commands, misheard commands and chatter. If your voice agent produces intents some other way, pass your own function to `evaluateVoice` in `src/bench/index.ts`.
-- *Anything else* (latency, Adaption win rate): type the numbers into your entry in `comparisons.json`.
+- *Anything else* (for example voice latency): type the numbers into your entry in `comparisons.json`.
 
 **2. Gameplay: what it changes in a round.**
 `src/bench/gameplay.ts` plays the real game simulation with scripted controllers: Fire at Will only, gesture-deployed drones only, pilot alone, and pilot with drones. It reports round score (out of 1000), time to clear, hit accuracy and mech health left. The simulation is deterministic, so the same code always gives the same numbers; any change between snapshots is caused by the code change.
@@ -54,4 +54,3 @@ Then set the "Minimum time to issue Deploy or Recall" `after` value to the same 
 ### Suggested numbers for each workstream
 
 - **Voice agent:** the time from the end of speech to the order being accepted (compare with the 500 ms gesture hold), the share of a fixed phrase list understood correctly, wrong orders from mis-hearing, and whether Recall still beats voice-issued orders.
-- **Adaption model:** `best_win_rate` from the AutoScientist run as a percentage (50% means no better than the base model) and `best_win_rate ÷ target_win_rate`. If the adapted model runs inside the game, also save an "after" snapshot and benchmark run to show its cost in download size and frame rate.

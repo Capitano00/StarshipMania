@@ -19,7 +19,7 @@ export const thresholds={
   slowFramePenalty:4,                  // per frame over 33 ms during play
   longFramePenalty:2,                  // per long animation frame (over 50 ms), such as a screen change
   heapPeakMB:{best:50,worst:200},
-  leakPenalty:5,                       // heap settles more than 50% (+2 MB) above where it started
+  leakPenalty:5,                       // heap stays within 10% of its peak after combat (it never settles)
   loadMs:{best:100,worst:1000},
   initialJsGzipKB:{best:50,worst:250},
 };
@@ -29,7 +29,8 @@ export function scorePerformance(run:PerformanceRun):{total:number;max:number;ca
   const worstFps=Math.min(...run.scenarios.map(s=>s.fps));
   const slowFrames=run.scenarios.reduce((sum,s)=>sum+s.slowFrames,0);
   const {startMB,peakMB,settledMB}=run.heap;
-  const leak=settledMB!==null&&settledMB>startMB*1.5+2;
+  // Compare with the peak, not the page-load heap: the page loads before the 3D scene exists, so "start" is always lower.
+  void startMB;const leak=settledMB!==null&&settledMB>peakMB*.9;
   const categories:ScoreCategory[]=[
     {id:'frames',label:'Frame rate',max:30,points:30*linear(worstFps,t.fps.best,t.fps.worst),basis:`${worstFps} fps in the slowest scenario`},
     {id:'smoothness',label:'Smoothness',max:20,points:Math.max(0,20-t.slowFramePenalty*slowFrames-t.longFramePenalty*run.longAnimationFrames.length),basis:`${plural(slowFrames,'slow frame')} in play · ${plural(run.longAnimationFrames.length,'long animation frame')}`},

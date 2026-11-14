@@ -4,7 +4,8 @@ import {evaluateVoice,phrases} from '../src/bench/voice-eval';
 import {gameplayRows,type Snapshot} from '../src/metrics-compare';
 import type {VoiceIntent} from '../src/voice';
 
-describe('gameplay benchmark',()=>{
+// These play many full rounds; allow for a busy machine (the default 5 s limit flaked during a 51 s build).
+describe('gameplay benchmark',{timeout:30_000},()=>{
   it('is deterministic, so a before/after difference comes from the change and not from luck',()=>{
     expect(JSON.stringify(runGameplayBenchmark())).toBe(JSON.stringify(runGameplayBenchmark()));
   });
@@ -27,7 +28,7 @@ describe('gameplay benchmark',()=>{
   });
 });
 
-describe('supervisor agent benchmark',()=>{
+describe('supervisor agent benchmark',{timeout:30_000},()=>{
   it('clears the arena through the real tool layer, deterministically, with no stale decisions',()=>{
     const report=runSupervisorBenchmark();
     expect(report).toEqual(runSupervisorBenchmark());

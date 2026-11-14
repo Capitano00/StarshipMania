@@ -45,9 +45,9 @@ describe('before/after comparisons',()=>{
     expect(byName['Page load']).toMatchObject({before:175,after:43,verdict:'better'});
     expect(rows.some(r=>r.source==='snapshot')).toBe(false);
   });
-  it('keeps the voice and Adaption comparisons pending until their "after" results exist',()=>{
+  it('keeps the voice comparison pending until its "after" results exist',()=>{
     const snapshot:Snapshot={id:'before-integrations',label:'before',capturedAt:'',version:'0.4.3',build:{ok:true,seconds:3},bundle:{firstLoadGzipBytes:39000,laterGzipBytes:133000},tests:{passed:251,failed:71,newFailures:0,todo:5},code:{appLines:2000,testLines:1300}};
-    for(const id of ['voice-agent','adaption-model']){
+    for(const id of ['voice-agent']){
       const rows=compare(comparisons.find(c=>c.id===id)!,[snapshot],runs);
       expect(rows.length).toBeGreaterThan(0);expect(progress(rows).measured).toBe(0);
       expect(rows.find(r=>r.name==='Tests passing')).toMatchObject({before:251,after:null,verdict:'pending'});

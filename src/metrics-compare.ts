@@ -50,7 +50,7 @@ const row=(name:string,unit:string,better:Better,before:Value,after:Value,source
 
 const snapshotRows=(before?:Snapshot,after?:Snapshot):Row[]=>[
   row('First-load JS (gzip)','kB','lower',before?kB(before.bundle.firstLoadGzipBytes):null,after?kB(after.bundle.firstLoadGzipBytes):null,'snapshot'),
-  row('JS loaded later (gzip)','kB','lower',before?kB(before.bundle.laterGzipBytes):null,after?kB(after.bundle.laterGzipBytes):null,'snapshot'),
+  row('JS loaded later or on demand (gzip)','kB','lower',before?kB(before.bundle.laterGzipBytes):null,after?kB(after.bundle.laterGzipBytes):null,'snapshot'),
   row('Tests passing','','higher',before?.tests.passed??null,after?.tests.passed??null,'snapshot'),
   row('New test failures','','lower',before?.tests.newFailures??null,after?.tests.newFailures??null,'snapshot','Failures not inherited from ProjectZero'),
   row('App source lines','',null,before?.code.appLines??null,after?.code.appLines??null,'snapshot','More code is neither better nor worse'),

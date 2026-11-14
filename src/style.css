@@ -1,0 +1,279 @@
+:root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#dce5e8;background:#09131c;font-synthesis:none;font-size:14px}*{box-sizing:border-box}body{margin:0}button,a{-webkit-tap-highlight-color:transparent}button{font:inherit;color:#d4e4e8;background:#172a37;border:1px solid #34505f;border-radius:5px;padding:10px 13px;cursor:pointer;transition:background .15s}button:hover{background:#274555}button:focus-visible,a:focus-visible{outline:3px solid #e8c473;outline-offset:3px}button:disabled{opacity:.4;cursor:not-allowed}.primary{background:#90dcd1;color:#10282b;border-color:#90dcd1;font-weight:650}.primary:hover{background:#b0eee5}[hidden]{display:none!important}header{height:70px;display:flex;align-items:center;padding:0 4%;border-bottom:1px solid #233540;gap:28px}.brand{text-decoration:none;font-weight:800;font-size:23px;letter-spacing:4px;color:#e9f0ef}.brand span{color:#8ee2d7}.brand small{font-size:10px;letter-spacing:2px;margin-left:12px;vertical-align:middle}.edition{font-size:10px;letter-spacing:2px;color:#889da7}.edition b{color:#cddbdc;margin-left:8px}.privacy{margin-left:auto;font-size:10px;letter-spacing:1.3px;color:#9eb8bd}.privacy i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#8bd5c0;margin-right:8px}.setup{max-width:1360px;padding:35px 4% 18px;margin:auto}.eyebrow{font-size:10px;letter-spacing:2px;color:#90b3bd;font-weight:600}h1{font-size:clamp(30px,3vw,44px);line-height:1.13;letter-spacing:-1.6px;margin:17px 0 13px;font-weight:570}h1 em{font-style:normal;color:#94dcd3}.intro{display:flex;align-items:center;justify-content:space-between;position:relative;padding-top:22px;margin-bottom:25px}.intro>.eyebrow{position:absolute;top:0}.intro p{line-height:1.8;color:#9eb0b9;margin:20px 0 0}.setup-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.card{background:linear-gradient(145deg,#152632,#10202c);border:1px solid #2a404c;border-radius:8px;padding:22px;position:relative}.step{font-size:10px;color:#6e9eaa;letter-spacing:2px}.card h2{font-size:19px;font-weight:550;margin:10px 0 14px}.card p{color:#aabcc5;font-size:12px;line-height:1.65;margin:0 0 17px}.card .fine{font-size:11px;color:#879fa9;margin:15px 0 0}.buttons{display:flex;flex-wrap:wrap;gap:8px}.buttons button{font-size:11px;padding:10px}.status{font-size:11px;border-top:1px solid #2b404b;padding-top:13px;margin-top:15px;color:#9ed6c9}.palm-map{height:108px;display:flex;gap:14px;margin:15px 0}.comfort{position:relative;width:50%;border:1px dashed #466570;border-radius:15px;background:radial-gradient(ellipse,#28434b77,transparent)}.comfort span{position:absolute;bottom:8px;left:9px;font-size:8px;letter-spacing:1px;color:#a4bfc5}.comfort i{position:absolute;left:50%;top:50%;height:12px;width:12px;border-radius:50%;background:#8ce0d2;transform:translate(-50%,-50%);box-shadow:0 0 20px #68d8c344}.practice{height:109px;position:relative;border:1px solid #304956;background:#0b1a25;border-radius:5px;margin:14px 0}.practice-target{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);font-size:9px;border:1px solid #b17756;border-radius:50%;width:33px;height:33px;text-align:center;line-height:31px;color:#e8af84}.practice>span:last-child{position:absolute;bottom:8px;left:10px;font-size:10px;color:#92babd}.crosshair{position:absolute;width:23px;height:23px;border:1px solid #ceeee9;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}.crosshair:before,.crosshair:after{content:'';position:absolute;background:#c5f0df}.crosshair:before{width:1px;height:31px;left:10px;top:-5px}.crosshair:after{height:1px;width:31px;top:10px;left:-5px}.crosshair.firing{border-color:#ffc77c;box-shadow:0 0 14px #ffb65d}.setup-foot{display:flex;align-items:center;gap:12px;margin-top:19px;font-size:9px;letter-spacing:1px;color:#788e98;flex-wrap:wrap}.setup-foot button{font-size:10px}footer{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:64px;padding:12px 3%;border-top:1px solid #263a45;background:#0d1a24}footer>div{display:flex;flex-direction:column;gap:6px}#tracking-state{font-size:10px;letter-spacing:1.3px;color:#abd9cd}#metrics{font-size:10px;color:#829ba8}footer nav{display:flex;gap:7px;flex-wrap:wrap}footer button{font-size:10px;padding:8px 10px}#arena{position:relative;height:calc(100vh - 135px);min-height:440px;overflow:hidden}#scene{display:block;width:100%;height:100%}.arena-top{position:absolute;top:28px;left:4%;right:4%;display:flex;justify-content:space-between;pointer-events:none}.arena-top h2{font-size:22px;font-weight:500;margin:10px 0;color:#d9e6e9}.stats{display:flex;gap:32px}.stats span{font-size:9px;letter-spacing:1.5px;color:#a3bcc8}.stats b{display:block;font-size:27px;color:#e2f0f1;margin:6px 0;letter-spacing:0;font-weight:500}.stats small{font-size:8px}meter{display:block;width:100px;height:4px}#pause-overlay{position:absolute;top:35%;left:50%;transform:translateX(-50%);width:min(470px,90%);padding:26px;background:#0c1c29ed;border:1px solid #3e5c67;border-radius:8px;text-align:center;box-shadow:0 14px 70px #0006}#pause-overlay h2{font-size:27px;font-weight:500;margin:15px 0}#pause-overlay p{color:#adc4ca;line-height:1.6;font-size:12px}.arena-bottom{position:absolute;bottom:24px;left:4%;right:4%;display:flex;justify-content:space-between;gap:20px;pointer-events:none}.order,.preview{display:flex;flex-direction:column;gap:9px;padding:16px 19px;background:#102430de;border:1px solid #35505b;border-radius:6px;min-width:250px}.order strong,.preview strong{font-size:15px;font-weight:550}.order>span:last-child{font-size:10px;color:#9fbac2}.preview{min-width:280px}progress{height:4px;width:100%;accent-color:#ead292}#target-label{position:absolute;transform:translate(20px,-10px);font-size:11px;color:#ffd3a3;pointer-events:none}#synthetic-help{display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 20px;background:#352d1f;color:#dcc296;font-size:10px;border-top:1px solid #635035}#synthetic-help button{padding:5px 8px;font-size:9px;background:#473b27;border-color:#756044;color:#e6ceac}body:has(#synthetic-help:not([hidden])) #arena{height:calc(100vh - 176px)}@media(min-width:1450px){.setup{padding-top:50px}.intro{margin-bottom:35px}.card{padding:28px}.card p{font-size:13px}.palm-map,.practice{height:135px}.setup-foot{margin-top:30px}}@media(max-width:950px){.setup-grid{grid-template-columns:1fr}.intro{display:block}.intro p{margin:12px 0}.privacy{display:none}.setup{padding:25px}.stats{gap:12px}.arena-top h2{font-size:16px}.arena-bottom{bottom:12px}.order,.preview{min-width:0;padding:10px;max-width:48%}footer{flex-wrap:wrap}#synthetic-help{flex-wrap:wrap}.edition{margin-left:auto}.brand small{display:none}}
+:root{scrollbar-color:#34505f #0b1720}
+dialog{color:#f5f1fa;background:linear-gradient(145deg,#1d2739,#101a28);border:1px solid #89799f;border-radius:10px;width:min(650px,94vw);max-height:88vh;padding:24px;overflow:auto}dialog::backdrop{background:#050b14c9}dialog p{font-size:12px;line-height:1.7;color:#c0cbd7}dialog h2{margin-top:0}#settings-controls #sensitivity{margin-bottom:16px}#settings-camera .tracking-preview{max-width:340px}#close-settings{margin-top:16px}#train{margin:8px 0 0 8px}
+#results-panel{position:absolute;z-index:5;top:23%;left:50%;transform:translateX(-50%);width:min(580px,92%);padding:28px;border:1px solid #cbb7f4;background:linear-gradient(145deg,#24273cf5,#111c2bf5);border-radius:10px;box-shadow:0 20px 80px #0009}#results-panel h2{font-size:32px;margin:12px 0}#results-counts{line-height:2;color:#d2c8df}#training-panel{position:absolute;z-index:2;right:4%;top:150px;width:min(410px,46%);padding:16px;background:#1d2237ef;border:1px solid #89799f;border-radius:8px;font-size:12px}#training-panel>strong{font-size:10px;letter-spacing:.05em;color:#cbb7f4}#training-step{font-size:15px;line-height:1.5;color:#f5f1fa}#training-help{font-size:11px;line-height:1.5;color:#c8ccd6}.is-training>.tracking-preview{top:420px!important}#arena.is-training{min-height:780px}#hit-feedback{margin:0;color:#f5f1fa;font-size:12px;min-height:1.4em}#target-label{color:#f5f1fa;text-shadow:0 1px 4px #000}.order{border-left:4px solid #cbb7f4}.preview{border-left:3px dashed #f4d577}
+:root{--system-accent:#CBB7F4;--system-ink:#F5F1FA}.system-brand{display:block;font-size:14px;letter-spacing:.06em;margin-bottom:4px;color:var(--system-ink)}.system-brand span,.system-order,h1 em{color:var(--system-accent)}.system-introduction{color:var(--system-ink);font-weight:550}.primary{background:var(--system-accent);border-color:var(--system-accent)}.primary:hover{background:var(--system-ink)}
+.practice-actions{margin:12px 0}.practice-actions p{margin:10px 0;font-size:12px}.practice-actions small{display:block;color:#9cb4be;font-size:10px;margin:8px 0 14px}#practice-fire{min-height:3em;color:#c6e6dd}
+#sensitivity{display:grid;grid-template-columns:1fr;gap:7px;border:1px solid #34505f;border-radius:5px;margin:14px 0 0;padding:10px;text-align:left}#sensitivity legend,#sensitivity label{font-size:11px;color:#c6e6dd}#sensitivity output{float:right}#sensitivity input{width:100%;margin:0;accent-color:#90dcd1}#sensitivity input:focus-visible{outline:3px solid #e8c473;outline-offset:3px}#sensitivity small{font-size:10px;color:#aabcc5}#sensitivity button{justify-self:start;font-size:11px}#weapon-status{position:absolute;top:106px;left:4%;max-width:52%;font-size:11px;line-height:1.5;color:#d3eee5;background:#102430de;padding:8px 10px;border-radius:5px;pointer-events:none}
+#calibration-guide{margin:12px 0}#calibration-guide-status{min-height:3em;color:#c6e6dd}#pause-overlay{top:145px;left:4%;transform:none;width:min(360px,44%);max-height:calc(100% - 160px);padding:14px;overflow:auto;z-index:2;text-align:left;box-shadow:0 8px 24px #0005}#pause-overlay h2{font-size:18px;margin:10px 0}#pause-overlay button{font-size:11px;padding:8px}#pause-overlay .buttons{justify-content:flex-start}#paused-settings{margin-top:12px;border-top:1px solid #34505f;padding-top:10px}#paused-settings summary{cursor:pointer;font-size:11px;color:#c6e6dd}#paused-settings summary:focus-visible{outline:3px solid #e8c473;outline-offset:3px}#resume-status:empty,#practice-start-status:empty{display:none}
+.tracking-preview{margin-top:14px;padding:10px;border:1px solid #34505f;border-radius:6px;background:#0b1a25;color:#bed3d9}.tracking-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:11px}.tracking-heading button{font-size:10px;padding:6px}.tracking-preview canvas{display:block;width:100%;height:auto;background:#07121b;border-radius:4px}.tracking-preview #camera-feedback{font-size:11px;line-height:1.5;margin-top:8px;color:#c6e6dd}.tracking-preview .tracking-legend{font-size:10px;line-height:1.5;color:#9cb4be;margin:7px 0 0}#arena>.tracking-preview{position:absolute;right:4%;top:145px;width:min(280px,44%);margin:0;z-index:1}#arena>.tracking-preview:has(canvas[hidden]) .tracking-legend{display:none}
+@media(min-width:951px) and (max-height:800px){.setup{padding-top:20px;padding-bottom:12px}.intro{padding-top:16px;margin-bottom:14px}h1{font-size:32px;margin:14px 0 10px}.intro p{font-size:12px}.card{padding:17px}.card h2{font-size:18px;margin:8px 0 10px}.card p{font-size:11.5px;line-height:1.5;margin-bottom:12px}.card .fine{font-size:10.5px;margin-top:11px}.palm-map,.practice{height:86px;margin:12px 0}.setup-foot{margin-top:12px;font-size:8px}.setup-foot button{font-size:9px;padding:6px 8px}.status{padding-top:10px;margin-top:11px}header{height:60px}#arena{height:calc(100vh - 125px)}body:has(#synthetic-help:not([hidden])) #arena{height:calc(100vh - 166px)}}
+.practice{height:156px}.practice-actions{display:grid;gap:10px}.fire-status{min-height:3.2em;padding:13px 15px;border:1px solid #4c716f;border-left:5px solid #8ce0d2;border-radius:6px;background:#102932;color:#e7f8f3!important;font-size:14px!important;font-weight:650;line-height:1.45}.fire-status.is-held{border-color:#ffb65d;background:#332719;color:#fff1dc!important}.fire-status.is-blocked{border-color:#ba765f;background:#2b1d1b;color:#ffd9cc!important}#weapon-status{top:76px;max-width:min(560px,52%);font-size:14px;z-index:3}#camera-fire{margin-top:10px}
+#practice-readiness{padding:12px;border:1px solid #3b5964;border-radius:6px;background:#0b1a25}#practice-readiness>strong{display:block;color:var(--system-ink);font-size:12px;letter-spacing:.04em}#practice-readiness ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;margin:10px 0;padding:0;list-style:none}#practice-readiness li{font-size:10px;color:#e3b49f}#practice-readiness li.is-ready{color:#9fe0cf}#readiness-progress{width:100%}#readiness-guidance{margin:7px 0 0;font-size:11px;color:#c7dadd}
+#input-details{border:1px solid #34505f;border-radius:6px;padding:10px;background:#0a1720}#input-details summary{cursor:pointer;color:#c6e6dd;font-size:11px}#input-details summary:focus-visible{outline:3px solid #e8c473;outline-offset:3px}#input-details dl{display:grid;grid-template-columns:1fr auto;gap:7px 14px;margin:12px 0;font-size:10px}#input-details dt{color:#9cb4be}#input-details dd{margin:0;color:#e7f2f1;text-align:right}#input-details p{font-size:9px;color:#839da7;margin:8px 0 0}
+@media(max-width:950px){.practice{height:146px}#practice-readiness ul{grid-template-columns:1fr}.fire-status{font-size:12px!important}#weapon-status{max-width:70%;top:72px}}
+/* v0.2 responsive overrides follow the preserved v0.1 rules. */
+#v02-result{overflow-wrap:anywhere}.shot-legend{font-size:10px;color:#b8c4cd}
+/* Compact play uses the viewport, never a scroll-sized canvas. */
+.arena-bottom{display:block}.arena-bottom>summary{display:none}.arena-bottom>.order,.arena-bottom>.preview{display:inline-flex;vertical-align:top;width:48%;min-width:0;max-width:none}.arena-bottom>.preview{float:right}
+@media(max-width:700px){
+ body:has(#arena:not([hidden])) #app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+ body:has(#arena:not([hidden])) header{height:40px;flex:0 0 40px;padding:4px 12px;gap:12px}
+ body:has(#arena:not([hidden])) header .brand{font-size:18px}body:has(#arena:not([hidden])) .edition{font-size:8px}.system-brand{font-size:12px}
+ body:has(#arena:not([hidden])) #app>main{flex:1;min-height:0;display:flex;flex-direction:column}
+ body:has(#arena:not([hidden])) #arena,body:has(#arena:not([hidden])) #arena.is-training{flex:1;height:auto!important;min-height:0!important;width:100%}
+ body:has(#arena:not([hidden])) #app>section{display:none}
+ body:has(#arena:not([hidden])) footer{flex:0 0 44px;height:44px;min-height:44px;padding:5px 8px;flex-wrap:nowrap}
+ body:has(#arena:not([hidden])) footer>div{display:none}body:has(#arena:not([hidden])) footer nav{width:100%;justify-content:space-between;gap:4px;flex-wrap:nowrap}
+ body:has(#arena:not([hidden])) footer button{font-size:9px;padding:7px 6px;white-space:nowrap}
+ body:has(#arena:not([hidden])) #synthetic-help{flex:0 0 32px;height:32px;padding:3px 8px;gap:8px;flex-wrap:nowrap;font-size:9px}
+ body:has(#arena:not([hidden])) #synthetic-help>span{display:none}body:has(#arena:not([hidden])) #synthetic-help button{padding:4px;font-size:9px}
+ #scene{position:absolute;inset:0;width:100%;height:100%}
+ #arena .arena-top{top:6px;left:10px;right:10px;gap:8px;flex-wrap:nowrap;align-items:start}
+ #arena .arena-top>div:first-child{max-width:65%}#arena .arena-top .eyebrow{font-size:8px;letter-spacing:.06em}
+ #arena .arena-top h2{font-size:12px;line-height:1.2;margin:3px 0}#arena .shot-legend{display:none}
+ #arena .stats{gap:10px}#arena .stats span{font-size:8px;letter-spacing:0}#arena .stats b{font-size:15px;margin:1px 0}#arena .stats meter,#arena .stats span:last-child{display:none}
+ #arena #weapon-status{top:46px;left:10px;width:53%;max-width:53%;min-height:0;padding:6px 8px;font-size:11px!important;line-height:1.3;border-left-width:3px}
+ #arena #training-panel{top:auto;bottom:39px;left:10px;right:auto;width:53%;padding:7px;z-index:2}
+ #arena #training-panel>strong{font-size:8px;line-height:1.2;display:block}#arena #training-step{font-size:11px;line-height:1.3;margin:5px 0}
+ #arena #training-help{display:none}#arena #training-panel .buttons{gap:4px;flex-wrap:nowrap}#arena #training-panel button{font-size:9px;padding:5px}
+ #arena #pause-overlay{top:48px;bottom:auto;left:auto;right:10px;width:43%;max-height:calc(100% - 88px);padding:10px;z-index:4}
+ #arena #pause-overlay .eyebrow{font-size:8px}#arena #pause-title{font-size:14px;margin:4px 0}#arena #pause-reason,#arena #resume-status{font-size:10px;line-height:1.3;margin:5px 0}
+ #arena #pause-overlay button{font-size:11px;padding:7px}#arena #paused-settings{display:none}
+ #arena #results-panel{top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-height:calc(100% - 20px);overflow:auto;padding:12px;z-index:5}
+ #arena #results-title{font-size:22px;margin:5px 0}#arena #results-counts{font-size:11px;line-height:1.5;margin:6px 0}#arena #results-panel button{font-size:11px;padding:8px}
+ #arena>.tracking-preview{display:none!important}
+ #arena .arena-bottom{left:10px;right:10px;bottom:5px;max-height:125px;overflow:auto;background:#102430f5;border:1px solid #526075;border-radius:5px;pointer-events:auto;z-index:3}
+ #arena .arena-bottom>summary{display:block;padding:6px 8px;font-size:10px;cursor:pointer;position:sticky;top:0;background:#172638;color:#eadff9}
+ #arena .arena-bottom>.order,#arena .arena-bottom>.preview{float:none;display:flex;width:100%;padding:7px;border:0;gap:4px}.arena-bottom strong{font-size:12px}#arena #hit-feedback{font-size:10px}
+ #arena #target-label{font-size:9px;max-width:32%}
+ dialog{padding:14px;max-height:90dvh}#close-settings{position:sticky;bottom:0}#train{margin-left:0}
+}
+/* Keep the desktop training canvas bounded too; auxiliaries overlay, not stretch it. */
+body:has(#arena:not([hidden])) #app{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+body:has(#arena:not([hidden])) #app>main{flex:1;min-height:0;display:flex;flex-direction:column}
+body:has(#arena:not([hidden])) #arena,body:has(#arena:not([hidden])) #arena.is-training{height:auto!important;min-height:0!important;flex:1}
+body:has(#arena:not([hidden])) header,body:has(#arena:not([hidden])) footer,body:has(#arena:not([hidden])) #synthetic-help{flex-shrink:0}
+body:has(#arena:not([hidden])) #app>section{display:none}
+/* The catalogue scrolls inside Settings; it never enlarges the play surface. */
+#recognition-presets{display:grid;gap:10px;border:1px solid #89799f;border-radius:6px;padding:12px;margin:14px 0}#recognition-presets legend,#recognition-presets label{font-size:12px}#recognition-presets label{display:flex;justify-content:space-between;gap:12px;align-items:center}#recognition-presets select{max-width:70%;font:inherit;color:#f5f1fa;background:#172638;padding:8px;border:1px solid #89799f;border-radius:4px}#recognition-presets small{font-size:10px;color:#b8c4cd}
+#gesture-guide:focus-visible{outline:2px solid #cbb7f4;outline-offset:3px}.gesture-catalogue{display:grid;grid-template-columns:1fr;gap:10px}.gesture-card{display:grid;grid-template-columns:90px 1fr;gap:14px;padding:12px;border:1px solid #596079;background:linear-gradient(135deg,#26293c,#13202f);border-radius:6px}.gesture-card svg{width:90px;height:112px;fill:none;stroke:#f5f1fa;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}.gesture-card h4{margin:0 0 5px;color:#cbb7f4;font-size:16px}.gesture-card b,.gesture-card small{font-size:11px}.gesture-card p{margin:7px 0;line-height:1.45}.gesture-card output{display:block;margin-top:8px;color:#90dcd1;font-size:11px}#open-gesture-guide{margin-top:8px}
+@media(max-width:700px){.gesture-card{grid-template-columns:65px 1fr;gap:10px;padding:10px}.gesture-card svg{width:65px;height:90px}.gesture-card h4{font-size:14px}#arena #target-label{max-width:28%;overflow-wrap:anywhere}}
+
+/* Paired setup keeps its deliberate actions above auxiliary controls. */
+/* v0.4 keeps action feedback and recent events separate from the aiming surface. */
+#binding-settings{border-top:1px solid #89799f;margin-top:18px;padding-top:12px}
+.binding-row{display:grid;grid-template-columns:1fr 1.4fr;gap:7px;padding:10px 0;border-bottom:1px solid #394252;font-size:12px}.binding-row small{display:block;color:#aabcc5}.binding-row select,.binding-row input{width:100%;min-width:0;background:#172638;color:#f5f1fa;border:1px solid #89799f;border-radius:4px;padding:7px;font:inherit}.autofire-option{display:block;margin-top:16px;font-size:13px}#binding-error{color:#f4d577}
+#arena-actions{position:absolute;left:4%;top:120px;display:flex;gap:8px;z-index:3}#arena-actions button{padding:8px 12px;font-size:12px}
+#arena #weapon-status,#arena #unit-fire-status{position:absolute;top:72px;min-height:0;width:43%;max-width:43%;padding:8px 10px;font-size:12px!important;z-index:2;pointer-events:none}#arena #weapon-status{left:4%}#arena #unit-fire-status{right:4%;border-color:#cbb7f4}
+#command-log{position:absolute;right:4%;bottom:16px;width:300px;z-index:2;border:1px solid #756789;border-radius:6px;background:#111e2de8;font-size:11px}.log-heading{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;color:#cbb7f4}.log-heading button{font-size:10px;padding:4px 6px}#log-scroll{height:216px;overflow:auto;overflow-anchor:none}#log-entries{list-style:none;padding:0;margin:0}#log-entries li{height:36px;overflow:hidden;padding:4px 8px;border-top:1px solid #344052;line-height:13px}#log-entries li:first-child{background:#3b334d;color:#f5f1fa;border-left:3px solid #cbb7f4}#log-entries time{color:#aabcc5}#log-entries small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#aabcc5}
+#arena .arena-bottom{right:calc(4% + 320px)}#arena #training-panel{left:4%;right:auto;top:170px;width:min(400px,48%)}#arena #pause-overlay{z-index:5}#arena #pause-overlay .buttons{gap:5px;margin:8px 0}
+@media(min-width:701px){#arena .arena-top{top:14px}#arena .arena-top h2{font-size:17px;line-height:1.2;margin:5px 0}#arena .stats b{font-size:21px;line-height:1.1;margin:3px 0}#arena .stats meter{height:3px}}
+@media(max-width:700px){
+ #arena #weapon-status,#arena #unit-fire-status{top:40px;width:47%;max-width:47%;padding:5px 6px;font-size:10px!important;line-height:1.25}#arena #weapon-status{left:8px}#arena #unit-fire-status{right:8px}
+ #arena-actions{top:88px;left:8px;gap:5px}#arena-actions button{font-size:10px;padding:6px 8px}
+ #command-log{right:8px;bottom:8px;width:43%;font-size:9px}#log-scroll{height:90px}#log-entries li{height:30px;padding:3px 5px;line-height:11px}.log-heading{padding:4px 5px}.log-heading button{font-size:8px;padding:3px}
+ #arena .arena-bottom{left:8px;right:auto;width:52%;bottom:5px}
+ #arena #training-panel{left:8px;right:auto;top:auto;bottom:38px;width:52%;padding:6px}#arena #training-step{font-size:10px;line-height:1.25;margin:4px 0}
+ #arena #pause-overlay{top:84px;right:8px;width:46%;max-height:calc(100% - 90px);padding:8px}#arena #pause-overlay p{font-size:9px;line-height:1.2;margin:4px 0}#arena #pause-overlay button{font-size:10px;padding:6px}#arena #pause-overlay .eyebrow{display:none}
+ body:has(#arena:not([hidden])) footer #cancel,body:has(#arena:not([hidden])) footer #back,body:has(#arena:not([hidden])) footer #stop{display:none}
+}
+#calibration-guide>#test-controls{margin-top:10px}
+@media(max-width:700px) and (max-height:600px){
+ body:has(#setup:not([hidden])) header{height:40px;padding:4px 12px}
+ #setup{padding:10px}.setup .intro{display:none}.setup-grid{grid-template-columns:1fr 1fr;gap:10px}
+ .setup .card{padding:12px;min-width:0}.setup .card:nth-child(3){grid-column:1/-1}
+ .setup .card h2{font-size:16px;margin:5px 0 8px}.setup .card p{font-size:10.5px;line-height:1.4;margin-bottom:8px}
+ .setup .palm-map{display:none}.setup #calibration-guide{margin:8px 0}.setup #calibration-guide-status{min-height:0}
+ .setup .buttons{gap:5px}.setup .buttons button,.setup #test-controls{font-size:11px;padding:8px}
+ .setup #open-gesture-guide{font-size:10px;padding:7px}.setup .tracking-preview canvas{max-height:100px;object-fit:contain}
+}
+
+/* v0.4.1: the play surface owns its space; telemetry lives outside it. */
+body:has(#arena:not([hidden])) #app>header,body:has(#arena:not([hidden])) #app>footer,body:has(#arena:not([hidden])) #synthetic-help{display:none}
+#arena-shell{display:flex;flex:1;min-height:0;flex-direction:column;width:100%}
+#arena-shell:not(:has(#arena:not([hidden]))){display:none}
+#mission-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:6px 12px;background:#14232e;border-bottom:1px solid #465064}
+#mission-stats .arena-top{position:static;display:flex;align-items:center;gap:20px;padding:0;margin:0}
+#mission-stats .arena-top h2{display:none}
+#mission-stats .stats{display:flex;align-items:center;gap:16px;font-size:14px}
+#mission-stats .stats strong{font-size:18px}
+#mission-actions,#mission-actions #arena-actions{position:static;display:flex;gap:6px;margin:0}
+#mission-actions button{min-height:32px;padding:5px 9px;font-size:12px}
+#arena-workspace{display:grid;grid-template-columns:minmax(0,1fr) 290px;flex:1;min-height:0;overflow:hidden}
+#arena-workspace #arena{height:100%!important;min-height:0!important;width:100%;border:0;border-radius:0}
+#arena-inspector{background:#101e29;border-left:1px solid #465064;padding:10px;overflow-y:auto;min-height:0;min-width:0;font-size:14px;line-height:1.35}
+#inspector-status{display:flex;flex-direction:column;gap:7px;min-width:0}
+#tracking-line{font-size:12px;color:#acc4c8;overflow-wrap:anywhere}
+#arena-inspector #weapon-status,#arena-inspector #unit-fire-status,#arena-inspector #arena-details,#arena-inspector #training-panel,#arena-inspector #command-log{position:static!important;inset:auto!important;width:auto!important;max-width:none!important;transform:none!important;margin:0;min-height:0;font-size:14px;overflow-wrap:anywhere}
+#arena-inspector #weapon-status,#arena-inspector #unit-fire-status{padding:6px 8px;font-size:12px}
+#arena-inspector #arena-details>summary{display:none}
+#arena-inspector .arena-bottom{position:static;display:block;padding:0}
+#arena-inspector .arena-bottom>div{margin:5px 0;font-size:12px}
+#arena-inspector #order-text{font-size:14px}
+#arena-inspector #order-message,#arena-inspector #hit-feedback{font-size:12px}
+#arena-inspector #training-panel{padding:8px}
+#arena-inspector #training-panel h3{font-size:14px;margin:0}
+#arena-inspector #training-panel p{font-size:12px;margin:4px 0}
+#inspector-map{margin:10px 0;text-align:center}
+#minimap{display:block;width:160px;height:160px;max-width:100%;margin:4px auto;pointer-events:none}
+#inspector-aux [role=tablist]{display:flex;gap:4px;margin:6px 0}
+#inspector-aux [role=tab]{flex:1;font-size:12px;padding:6px;min-height:30px}
+#inspector-aux [aria-selected=true]{border-color:#cbb7f4;color:#eee6fc}
+#arena-inspector #command-log h3{display:none}
+#arena-inspector #log-scroll{max-height:216px}
+#arena-inspector #input-details{margin:0;font-size:12px}
+#arena-workspace #pause-overlay,#arena-workspace #results-panel{left:50%;right:auto;top:50%;bottom:auto;transform:translate(-50%,-50%);width:min(420px,calc(100% - 24px));max-height:calc(100% - 20px);overflow:auto;padding:14px}
+#arena-workspace #pause-overlay h2,#arena-workspace #results-panel h2{font-size:20px;margin:4px 0}
+#arena-workspace #pause-overlay button,#arena-workspace #results-panel button{min-height:32px;padding:6px 10px}
+#arena-workspace #target-label{top:12px;left:12px;max-width:calc(100% - 24px);font-size:12px}
+#session-settings{max-height:calc(100dvh - 24px);overflow:auto}
+.binding-row{grid-template-columns:minmax(100px,1fr) minmax(120px,1.5fr) minmax(80px,1fr)}
+@media(max-width:700px){
+ #mission-bar{min-height:38px;padding:3px 6px;gap:5px}
+ #mission-stats .stats{gap:7px;font-size:12px}
+ #mission-stats .stats strong{font-size:14px}
+ #mission-actions button{min-height:28px;padding:4px 6px;font-size:12px}
+ #arena-workspace{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 142px}
+ #arena-inspector{border-left:0;border-top:1px solid #465064;display:grid;grid-template-columns:minmax(0,1.3fr) 100px minmax(0,1fr);gap:8px;padding:6px;overflow:hidden}
+ #inspector-status,#inspector-aux{overflow:auto;min-width:0;min-height:0}
+ #inspector-status{gap:3px}
+ #arena-inspector #weapon-status,#arena-inspector #unit-fire-status{padding:3px 5px;font-size:12px}
+ #inspector-map{margin:0}
+ #inspector-map .eyebrow{font-size:10px;letter-spacing:0}
+ #minimap{width:100px;height:100px;margin:3px 0}
+ #inspector-aux [role=tablist]{margin:0 0 3px}
+ #inspector-aux [role=tab]{padding:3px;font-size:11px}
+ #arena-inspector #log-scroll{max-height:90px}
+ #arena-inspector #training-panel{padding:3px}
+ #arena-inspector #training-panel p{margin:2px 0}
+ #arena-inspector #training-panel button{font-size:11px;padding:3px 6px;min-height:24px}
+ #arena-workspace #pause-overlay,#arena-workspace #results-panel{padding:8px;font-size:12px}
+ #arena-workspace #pause-overlay h2,#arena-workspace #results-panel h2{font-size:16px}
+ #arena-workspace #pause-overlay p,#arena-workspace #results-panel p{margin:4px 0}
+ .binding-row{grid-template-columns:1fr 1fr}.binding-row label{grid-column:1/-1}
+}
+/* Keep map/log slots stable when tracking explanations change length. */
+#mission-stats .arena-top>.eyebrow,#mission-stats .arena-top>div:first-child{display:none}
+#mission-stats .stats{line-height:1.15}
+#mission-stats .stats>*{margin:0;padding:0}
+#mission-stats .stats b{font-size:18px!important;line-height:1.2}
+#mission-stats .stats small,#mission-stats .stats .eyebrow{font-size:10px;letter-spacing:1px}
+#mission-stats .stats meter{height:3px}
+#training-banner{font-size:12px;line-height:16px;padding:4px 12px;background:#242334;color:#e1d8f5;border-bottom:1px solid #5d546d;overflow-wrap:anywhere}
+#training-banner::before{content:'TRAINING / ';color:#b2d6d1;font-size:11px}
+#training-banner #training-step{display:inline;font-size:12px;margin:0}
+#arena-inspector{display:grid;grid-template-rows:minmax(0,auto) 140px minmax(130px,1fr);gap:6px;overflow:hidden}
+#inspector-status{overflow:auto;max-height:340px}
+#arena-inspector #arena-details{display:grid!important;grid-template-columns:1fr!important;gap:3px!important;padding:0!important;border:0!important}
+#arena-inspector #arena-details .eyebrow{display:none}
+#arena-inspector #arena-details>.order,#arena-inspector #arena-details>.preview{padding:5px 7px!important;min-height:0!important;width:auto!important;margin:0!important}
+#arena-inspector #arena-details p{margin:2px 0!important}
+#arena-inspector #training-panel .eyebrow{display:none}
+#arena-inspector #training-panel{font-size:12px}
+#arena-inspector #training-panel button{font-size:12px;min-height:28px;padding:4px 7px}
+#inspector-map{margin:0}
+#minimap{width:120px;height:120px}
+#inspector-aux{overflow:hidden;min-height:0}
+#input-panel{overflow:auto;max-height:calc(100% - 38px);font-size:12px}
+@media(max-width:700px){
+ #mission-stats .stats b{font-size:15px!important}
+ #mission-stats .stats small{font-size:9px}
+ #mission-stats .stats meter{display:none}
+ #arena-inspector{grid-template-rows:1fr;grid-template-columns:minmax(0,1.3fr) 90px minmax(0,1fr);gap:5px}
+ #inspector-status{max-height:none}
+ #minimap{width:90px;height:90px}
+ #arena-inspector #arena-details>.order,#arena-inspector #arena-details>.preview{padding:2px 5px!important}
+ #arena-inspector #training-panel{padding:2px!important}
+ #training-banner{padding:3px 6px;font-size:12px}
+}
+/* Rows must never shrink over their text, including the 640 x 450 dock. */
+#inspector-status>*{flex-shrink:0!important}
+#arena-inspector #weapon-status,#arena-inspector #unit-fire-status{font-size:12px!important;line-height:16px!important;height:auto!important;min-height:24px!important;font-weight:500!important;overflow-wrap:anywhere}
+#arena-inspector #arena-details>.order,#arena-inspector #arena-details>.preview{justify-self:stretch!important;align-self:stretch!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;box-sizing:border-box}
+#arena-inspector #order-text,#arena-inspector #preview-text{font-size:12px!important;line-height:16px!important;font-weight:500}
+#arena-inspector #training-panel{display:flex;gap:4px;flex-wrap:wrap}
+#arena-inspector #training-panel>*:not(button):not(.buttons){display:none}
+#arena-inspector #training-panel .buttons{display:flex;gap:4px;margin:0}
+#arena-inspector #training-panel button{font-size:11px;line-height:14px;min-height:24px;padding:4px 6px;flex:1}
+#inspector-map .eyebrow{font-size:10px;line-height:12px;letter-spacing:0;white-space:nowrap}
+#arena-inspector #command-log h2,#arena-inspector #command-log h3{display:none}
+@media(max-width:700px){
+ #mission-bar{height:40px;min-height:40px;box-sizing:border-box}
+ #mission-stats .stats small:last-child{display:none}
+ #arena-workspace{grid-template-rows:minmax(0,1fr) 122px}
+ #arena-inspector #weapon-status,#arena-inspector #unit-fire-status{padding:2px 5px!important;min-height:20px!important;line-height:14px!important}
+ #arena-inspector #training-panel{padding:0!important;border:0!important;background:none}
+ #arena-inspector #arena-details .preview{display:none}
+ #minimap{width:90px;height:90px}
+ #arena-inspector #log-scroll{max-height:84px}
+}
+#arena-inspector #log-panel{min-height:0;height:calc(100% - 36px)}
+#arena-inspector #command-log{height:100%;overflow:hidden}
+#inspector-aux [role=tablist]>button:not([role=tab]){padding:3px 5px;min-height:24px;font-size:11px}
+@media(max-width:700px){
+ #arena-workspace{grid-template-rows:minmax(0,1fr) 130px}
+ #inspector-aux [role=tab]{min-height:24px;font-size:11px;line-height:14px;padding:3px}
+ #arena-inspector #log-panel{height:calc(100% - 28px)}
+ #arena-inspector #log-scroll{max-height:90px}
+}
+/* v0.4.2: controller-derived command readiness stays inside the Padisarah panel. */
+#padisarah-panel{display:flex;flex-direction:column;gap:4px;min-width:0;border:1px solid #665a79;border-radius:5px;padding:5px;background:#15232f}
+#padisarah-panel #unit-fire-status{border:0;border-left:3px solid #8dd9d0}
+#padisarah-panel #order-text{font-size:12px;line-height:15px;margin:0;padding:0;font-weight:500}
+#command-readiness{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:0}
+.command-readiness-card{min-width:0;font-size:12px;line-height:14px}
+.command-readiness-card>div{display:flex;flex-direction:column;gap:1px}
+.command-readiness-card span{color:#c5b7d9;font-size:11px}
+.command-readiness-card strong{font-size:12px;line-height:14px;font-weight:500;overflow-wrap:anywhere}
+.command-readiness-card progress{display:block;width:100%;height:4px;margin:3px 0 0;accent-color:#cbb7f4}
+#command-input-details{font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+@media(max-width:700px){
+ #arena-workspace{grid-template-rows:minmax(0,1fr) 148px}
+ #padisarah-panel{padding:3px;gap:3px}
+ #command-readiness{gap:4px}
+ .command-readiness-card>div{gap:0}
+ #padisarah-panel #unit-fire-status{padding:1px 3px!important;min-height:18px!important}
+ #padisarah-panel #order-text{font-size:11px;line-height:13px}
+}
+/* v0.4.3 abilities stay in the existing inspector footprint. */
+#mech-panel{border:1px solid #546478;border-radius:5px;padding:5px;background:#15232f;min-width:0}
+#mech-panel #weapon-status{position:static!important;margin:0 0 4px!important}
+#booster-status{display:block;font-size:12px;line-height:16px;overflow-wrap:anywhere;color:#cddfe5}
+.ability-buttons{display:flex;gap:4px;min-width:0;margin-top:3px}
+.ability-buttons button,.ability-buttons select{min-width:0;min-height:24px;padding:3px 5px;font-size:11px;line-height:14px;flex:1}
+#fire-at-will[aria-pressed=true]{background:#cbb7f4;color:#121c28}
+/* Six/three compact summaries; explicit expansion reveals complete event meaning. */
+#log-entries li{height:auto;min-height:36px;overflow:visible;padding:0}
+#log-entries .log-event{margin:0;padding:0;border:0;background:none}
+#log-entries .log-event summary{display:block;min-height:35px;padding:3px 6px;cursor:pointer;list-style:none}
+#log-entries .log-headline{display:block;min-width:0;white-space:normal;overflow:visible;line-height:14px;font-size:11px}
+#log-entries .log-primary{display:flex;gap:4px;align-items:baseline;overflow-wrap:anywhere}
+#log-entries .log-primary time{flex-shrink:0}
+#log-entries .log-result{display:flex;justify-content:space-between;gap:4px;overflow-wrap:anywhere}
+#log-entries .log-disclosure{font-size:10px;color:#cbb7f4;text-decoration:underline;flex-shrink:0}
+#log-entries .log-event[open] summary{align-items:flex-start}
+#log-entries .log-event[open] .log-headline{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+#log-entries .log-event[open] small{display:block;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;padding:0 6px 6px;font-size:11px;line-height:15px}
+@media(max-width:700px){#log-entries li{min-height:30px}#log-entries .log-event summary{min-height:29px;padding:1px 4px}#log-entries .log-headline{font-size:10px;line-height:13px}}
+#training-banner #training-panel{display:inline-flex;position:static;max-width:none;min-height:0;padding:0;margin:0 0 0 8px;border:0;background:none}
+#training-banner #training-panel>strong,#training-banner #training-help{display:none}
+#training-banner #training-panel .buttons{display:inline-flex;margin:0;gap:4px}
+#training-banner #training-panel button{font-size:11px;line-height:14px;min-height:22px;padding:2px 5px}
+#faw-mode{max-width:140px}
+@media(max-width:700px){
+ #arena-inspector{grid-template-columns:minmax(0,2.3fr) 60px minmax(100px,1fr)}
+ #inspector-status{display:grid!important;grid-template-columns:minmax(85px,.8fr) minmax(0,1.7fr);grid-template-rows:16px minmax(0,1fr);gap:3px;overflow:hidden}
+ #tracking-line{grid-column:1/-1;font-size:10px;line-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #mech-panel{padding:3px;overflow:auto}
+ #padisarah-panel{grid-column:2;grid-row:2;padding:3px;gap:2px;overflow:hidden}
+ #minimap{width:60px;height:60px}
+ #inspector-map .eyebrow{font-size:9px}
+ #mech-panel .ability-buttons{flex-direction:column}
+ #booster-status{font-size:11px;line-height:13px}
+ .ability-buttons button,.ability-buttons select{padding:2px;min-height:22px;font-size:10px;line-height:12px}
+ #faw-mode{max-width:95px}
+ #padisarah-panel #unit-fire-status{font-size:11px!important;line-height:12px!important;max-height:28px;overflow:auto}
+ #padisarah-panel #order-text{font-size:10px;line-height:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .command-readiness-card strong{font-size:11px;line-height:12px}
+}

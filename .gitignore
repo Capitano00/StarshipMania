@@ -1,9 +1,11 @@
+node_modules/
+dist/
+public/vendor/
+.cache/
 .env
 .env.*
 !.env.example
-node_modules/
-dist/
+*.task
 coverage/
 __pycache__/
-.venv/
 *.log

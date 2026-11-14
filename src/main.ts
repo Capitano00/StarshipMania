@@ -13,11 +13,15 @@ import {PracticeFeedback,PracticeFireFeedback} from './practice';
 import {ResumeIntent} from './resume-intent';
 import {TrackingPreview} from './tracking-preview';
 import {GuidedCalibration} from './guided-calibration';
+import {AgentController} from './agent/controller';
+import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
+import {describeAction} from './agent/hud-bridge';
+import {createVoiceRecall} from './voice-recall';
 import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
-<header><a class="brand" href="/">P<span>◇</span>Z <small>PROJECTZERO</small></a><span class="edition"><strong class="system-brand">Padisarah</strong>FIRST PLAYABLE <b>v0.4.3</b></span><div class="privacy"><i></i> LOCAL ONLY · NO RECORDING</div></header>
+<header><a class="brand" href="/">P<span>◇</span>Z <small>PROJECTZERO</small></a><span class="edition"><strong class="system-brand">Padisarah</strong>FIRST PLAYABLE <b>v0.4.3</b></span><div class="privacy"><i></i><span id="privacy-mode">LOCAL ONLY · NO RECORDING</span></div></header>
 <main><section id="setup" class="setup"><div class="intro"><div class="eyebrow">01 / CONTROLS BEFORE COMBAT</div><h1>Remain the pilot.<br><em>Become the commander.</em></h1><p><strong class="system-introduction">Padisarah · your independent-unit control system.</strong><br>Two hands. One mech. Two Padisarah units.<br>Find a comfortable neutral position, then try each action.</p></div>
 <div class="setup-grid"><article class="card"><span class="step">01</span><h2>Settle in</h2><p>Rest your elbows. Keep both open palms visible and separated, with your left hand on the left. Small movements are enough.</p><div class="buttons"><button id="activate" class="primary">Activate webcam</button><button id="synthetic">Synthetic rehearsal</button></div><p class="fine">Camera is off until you choose to activate it. Images and landmarks stay in memory on this device. Stop or background this page to release the camera.</p><p class="fine">Webcam use is optional and requires local setup. Synthetic rehearsal needs no model or camera permission.</p><div id="source-status" class="status" role="status">Camera off</div><div id="tracking-home"><aside id="tracking-preview" class="tracking-preview" hidden><div class="tracking-heading"><strong>Camera view · mirrored</strong><button id="toggle-camera-preview" hidden>Show camera preview</button></div><canvas id="camera-preview" width="320" height="240" aria-label="Mirrored camera view with detected hand landmarks"></canvas><div id="camera-feedback" role="status" aria-live="polite">Camera off</div><div id="camera-fire" class="fire-status" role="status" aria-live="polite">Blocked · camera off</div><p class="tracking-legend">L = your left hand · R = your right hand. Labels are model estimates; confirm they follow your hands. Amber ? means uncertain. Landmarks show the latest processed sample. The amber highlight follows the configured pilot-fire hand only during accepted fresh fire input.</p></aside></div></article>
 <article class="card"><span class="step">02</span><h2>Capture your neutral</h2><p>Click Check both hands, then show both open palms during the countdown. You have 10 seconds after it to capture your comfortable centre. Checking stays paused; Test controls starts separately.</p><div class="palm-map"><div class="comfort left"><span>L · MOVE</span><i id="left-dot"></i></div><div class="comfort right"><span>R · AIM</span><i id="right-dot"></i></div></div><div id="calibration-home"><section id="calibration-guide"><p id="calibration-guide-status" role="status" aria-live="polite"></p><div class="buttons"><button id="calibrate" class="primary">Check both hands / C</button><button id="cancel-calibration" hidden>Cancel calibration</button></div></section></div><button id="test-controls">Test controls</button><p id="calibration-status" class="fine">Neutral not captured</p></article>
@@ -25,7 +29,7 @@ app.innerHTML=`
 <p id="arena-error" role="alert" hidden></p><div class="setup-foot"><span>SYNTHETIC REHEARSAL · physical gesture tracking is not validated here</span><button id="probe" hidden>Check local model with blank synthetic frame</button><output id="probe-result"></output></div></section>
 <section id="arena" hidden><canvas id="scene" aria-label="Third-person mech arena"></canvas><div class="arena-top"><div><div class="eyebrow">02 / LIVE ARENA</div><h2 id="arena-title">Clear all six targets.</h2><small class="shot-legend">Mint: pilot · Lavender: Padisarah · Amber: enemy fire</small></div><div class="stats"><span>MECH <b id="health">100</b><meter id="health-meter" min="0" max="100" value="100"></meter></span><span>TARGETS <b id="remaining">6 / 6</b></span><span>PADISARAH UNITS <b>02</b><small>ONE GROUP</small></span></div></div><div id="reticle" class="crosshair"></div><div id="target-label"></div><div id="pause-overlay"><div class="eyebrow">SIMULATION FROZEN</div><h2 id="pause-title">Ready when you are.</h2><p id="pause-reason">Choose Resume, then open both hands comfortably.</p><button id="resume" class="primary">Resume / Space</button></div><details id="arena-details" class="arena-bottom" open><summary id="arena-details-summary">Unit order and command details</summary><div class="order"><span class="eyebrow system-order">PADISARAH · UNIT ORDER</span><strong id="order-text">FOLLOW</strong><span id="order-message">Padisarah units following</span></div><div class="preview"><span class="eyebrow">COMMAND PREVIEW</span><strong id="preview-text">No command pending</strong><progress id="dwell" max="1500" value="0"></progress></div></details></section>
 <section id="synthetic-help" hidden><b>SYNTHETIC INPUT · camera off</b><span>WASD: left palm · Arrows: right palm · J: pilot fire · H: Padisarah fire · K: deploy · V: recall (active bindings)</span><button id="neutral-synthetic">Open hands at neutral</button><button id="loss-synthetic">Toggle right-hand loss</button></section>
-</main><footer><div><span id="tracking-state">PAUSED</span><span id="metrics">No observations</span></div><nav><button id="pause">Space · pause</button><button id="recall">R · recall</button><button id="cancel">Esc · cancel</button><button id="restart">Restart</button><button id="back">Controls</button><button id="stop">Stop camera</button></nav></footer>`;
+</main><footer><div><span id="tracking-state">PAUSED</span><span id="metrics">No observations</span><span id="voice-status" role="status"></span></div><nav><button id="pause">Space · pause</button><button id="recall">R · recall</button><button id="voice-toggle" title="Shares microphone audio with ElevenLabs while listening">Start voice</button><button id="cancel">Esc · cancel</button><button id="restart">Restart</button><button id="back">Controls</button><button id="stop">Stop camera</button></nav></footer>`;
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 el('calibration-guide').append(el('test-controls'));
 const sensitivityPanel=document.createElement('fieldset');sensitivityPanel.id='sensitivity';sensitivityPanel.innerHTML='<legend>Sensitivity · adjust while paused</legend><label for="move-sensitivity">Move <output id="move-sensitivity-value" for="move-sensitivity">1.0×</output></label><input id="move-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1"><label for="aim-sensitivity">Aim <output id="aim-sensitivity-value" for="aim-sensitivity">1.0×</output></label><input id="aim-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1"><button id="reset-sensitivity">Reset to 1×</button><small>Lower = gentler response · higher = less hand travel. Session only.</small>';el('calibration-guide').append(sensitivityPanel);
@@ -57,6 +61,21 @@ function refreshBindingGuide(){
 const fillBindings=installBindingSettings(()=>controls.configuration,config=>{if(!controls.setBindings(config))return false;session=controls.configuration;sim.setDirectAutofire();resumeIntent.cancel();calibration.cancel();clearPending();refreshBindingGuide();return true;});
 const pauseActions=document.createElement('div');pauseActions.className='buttons';pauseActions.innerHTML='<button id="menu-retry">Retry round</button><button id="menu-settings">Settings</button><button id="menu-bindings">Gesture bindings</button><button id="menu-guide">Gesture guide</button>';el('resume').after(pauseActions);
 const arenaActions=document.createElement('div');arenaActions.id='arena-actions';arenaActions.innerHTML='<button id="arena-pause">Pause / Esc</button><button id="arena-retry">Retry round</button>';el('arena').append(arenaActions);
+// Supervisor agent: proposals need pilot approval (Y / N) unless the pilot grants autonomy (G). See src/agent/README.md.
+const agentController=new AgentController();let queuedAutonomy:{enabled:boolean;source:ActionIntent['source']}|null=null;
+installSupervisorRuntime({getSim:()=>stage==='arena'?sim:null,controller:agentController},{exposeGlobal:qaEnabled||new URLSearchParams(location.search).has('supervisor')});
+const autonomyButton=document.createElement('button');autonomyButton.id='autonomy-toggle';autonomyButton.textContent='Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed','false');arenaActions.append(autonomyButton);
+const proposalPanel=document.createElement('section');proposalPanel.id='agent-proposal';proposalPanel.hidden=true;proposalPanel.setAttribute('aria-live','polite');proposalPanel.style.cssText='position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;display:flex;gap:8px;align-items:center;padding:8px 12px;background:#102430f0;border:1px solid #cbb7f4;border-radius:6px;font-size:12px;max-width:min(640px,92%)';
+proposalPanel.innerHTML='<strong id="agent-proposal-text"></strong><span id="agent-proposal-reason"></span><button id="agent-accept" class="primary">Accept / Y</button><button id="agent-dismiss">Dismiss / N</button>';el('arena').append(proposalPanel);
+function toggleAutonomy(source:ActionIntent['source']){if(!gameplayActive()||sim.mode!=='combat')return;queuedAutonomy={enabled:!sim.autonomy.enabled,source};}
+function decideProposal(accept:boolean){const p=stage==='arena'?agentController.pending().at(-1):undefined;if(!p)return;if(accept)agentController.approve(p.id,sim);else agentController.dismiss(p.id,sim.tick);}
+autonomyButton.onclick=()=>toggleAutonomy('local-button');el('agent-accept').onclick=()=>decideProposal(true);el('agent-dismiss').onclick=()=>decideProposal(false);
+function renderSupervisor(){
+ if(stage==='arena')agentController.observe(sim); // also while paused (e.g. right after Retry); pure and idempotent
+ const on=sim.autonomy.enabled;autonomyButton.textContent=on?`Autonomy ON${sim.autonomy.fire?' (may fire)':''} / G`:'Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed',String(on));autonomyButton.hidden=sim.mode!=='combat';
+ const p=stage==='arena'?agentController.pending().at(-1):undefined;proposalPanel.hidden=!p;
+ if(p){el('agent-proposal-text').textContent='Agent proposes: '+describeAction(p);el('agent-proposal-reason').textContent=p.reason?' · '+p.reason:'';}
+}
 const unitFire=document.createElement('div');unitFire.id='unit-fire-status';unitFire.className='fire-status';el('arena').append(unitFire);
 const cameraUnitFire=document.createElement('div');cameraUnitFire.id='camera-unit-fire';cameraUnitFire.className='fire-status';el('camera-fire').after(cameraUnitFire);
 const practiceUnitFire=document.createElement('div');practiceUnitFire.id='practice-unit-fire';practiceUnitFire.className='fire-status';el('practice-fire').after(practiceUnitFire);
@@ -82,10 +101,13 @@ const video=document.createElement('video');let view:ArenaView|null=null;
 const trackingPreview=new TrackingPreview(el<HTMLCanvasElement>('camera-preview'),el('camera-feedback'));let showCameraDuringPlay=false;
 let renderState:'ready'|'lost'|'restart-required'='ready',renderMessage='';
 let settingsOpen=false,settingsFocus:HTMLElement|null=null,resultsShown=false;
-const camera=new CameraInput(video,()=>controls.epoch,(s,landmarks)=>{diagnosticSample=s;const accepted=controls.ingest(s,performance.now());trackingPreview.observe(s,landmarks,accepted,controls.epoch,controls.recognition);},reason=>{diagnosticSample=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();});
+const camera=new CameraInput(video,()=>controls.epoch,(s,landmarks)=>{diagnosticSample=s;const accepted=controls.ingest(s,performance.now());trackingPreview.observe(s,landmarks,accepted,controls.epoch,controls.recognition);},reason=>{
+  stopVoice();
+  diagnosticSample=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();
+});
 function clearPending(){queuedActions=[];queuedPolicy=null;if(stage==='arena'&&previousPreview&&!controls.inputArmed)sim.events.add(sim.tick,'Deploy / redirect','Cancelled','Control epoch reset',previousPreview);pending=[];previousPreview=null;lastEpoch=controls.epoch;practiceFeedback.clear();if(controls.paused||!controls.inputArmed)sim.stopFire();}
 function logCancellation(detail:string){const command=controls.bindings.pending;if(stage==='arena'&&(command||pending.length)){sim.events.add(sim.tick,command?.type==='RECALL'?'Recall':'Deploy / redirect','Cancelled',detail,command?.type==='INTERCEPT'?command.targetId:null);previousPreview=null;}}
-function pause(){logCancellation('Paused or menu opened');resumeIntent.cancel();calibration.cancel();controls.pause();clearPending();clock.reset();}
+function pause(){stopVoice();logCancellation('Paused or menu opened');resumeIntent.cancel();calibration.cancel();controls.pause();clearPending();clock.reset();}
 function sizeArena(){el<HTMLDetailsElement>('arena-details').open=true;view?.resize();}
 window.addEventListener('resize',sizeArena);
 
@@ -96,9 +118,22 @@ function resume(now=performance.now()){
   calibration.cancel('Calibration cancelled · start requested');pause();return resumeIntent.start(now);
 }
 function toggle(){if(resumeIntent.pending)pause();else if(controls.paused||controls.needsRearm)resume();else pause();}
-function recall(){if(!gameplayActive())return;controls.recall(performance.now());pending=[];previousPreview=null;queuedPolicy=null;queuedActions=queuedActions.filter(item=>item.action!=='fireAtWill');practiceFeedback.clear();const before=sim.accepted;sim.commands([sim.envelope({type:'RECALL'},'local-keyboard-recall',`cmd-${++commandId}`)]);if(sim.accepted>before)controls.bindings.manualOverride();}
+function recall(source:'local-keyboard-recall'|'local-voice-recall'='local-keyboard-recall') {
+  if (!gameplayActive()) return false;
+  if (source === 'local-keyboard-recall') voiceRecall.invalidate();
+  controls.recall(performance.now());
+  pending=[];previousPreview=null;queuedPolicy=null;
+  queuedActions=queuedActions.filter(item=>item.action!=='fireAtWill');practiceFeedback.clear();
+  const before=sim.accepted;
+  sim.commands([sim.envelope({type:'RECALL'},source,`cmd-${++commandId}`)]);
+  if (sim.accepted===before) return false;
+  controls.bindings.manualOverride();
+  return true;
+}
 function cancelCommand(){logCancellation('Explicit cancel');resumeIntent.cancel();calibration.cancel();controls.cancel(performance.now());clearPending();if(sim.mode==='training')sim.message='Command cancelled; open the bound hand or confirm a different pose for 80 ms to rearm';}
 function resetRound(mode:'combat'|'training'){
+  stopVoice();
+  inspector?.voiceTranscript.clear();
   // Retire old input and its events against the old run, never against its replacement.
   controls.restart();clearPending();
   resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode);sim.preferredPolicy=preferredPolicy;commandId=0;
@@ -155,7 +190,7 @@ el('recover-camera').onclick=()=>el('back').click();
 for(const kind of ['move','aim'] as const)el<HTMLInputElement>(`${kind}-sensitivity`).addEventListener('input',()=>{const value=Number(el<HTMLInputElement>(`${kind}-sensitivity`).value),current=controls.sensitivity;if(controls.setSensitivity(kind==='move'?value:current.move,kind==='aim'?value:current.aim)){resumeIntent.cancel();calibration.cancel();}});
 el('reset-sensitivity').onclick=()=>{if(controls.setSensitivity(1,1)){resumeIntent.cancel();calibration.cancel();}};
 el('toggle-camera-preview').onclick=()=>{showCameraDuringPlay=!showCameraDuringPlay;trackingPreview.setVisible(showCameraDuringPlay);};
-el('pause').onclick=toggle;el('resume').onclick=()=>resume();el('recall').onclick=recall;el('cancel').onclick=cancelCommand;el('restart').onclick=restart;
+el('pause').onclick=toggle;el('resume').onclick=()=>resume();el('recall').onclick=()=>recall();el('cancel').onclick=cancelCommand;el('restart').onclick=restart;
 el('stop').onclick=()=>{source='off';keys.clear();qaMissingHands.clear();camera.stop('Camera stopped · deliberate reactivation required');};
 el('neutral-synthetic').onclick=()=>{syntheticAim={x:0,y:0};keys.clear();qaMissingHands.clear();syntheticLoss=false;};el('loss-synthetic').onclick=()=>{syntheticLoss=!syntheticLoss;};
 document.addEventListener('keydown',event=>{
@@ -167,12 +202,12 @@ document.addEventListener('keydown',event=>{
   if(event.target instanceof HTMLElement&&event.target.closest('input,textarea,select,[contenteditable="true"]'))return;
   if(key===' '&&event.target instanceof HTMLElement&&event.target.closest('button,a,summary,input,textarea,select,[contenteditable="true"]'))return;
   if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))event.preventDefault();keys.add(key);
-  if(key===' ')toggle();else if(key==='c')calibrate();else if(key==='r')recall();else if(key==='shift')queueAction('shortDash','local-keyboard');else if(key==='q')queueAction('longDash','local-keyboard');else if(key==='f')queueAction('fireAtWill','local-keyboard');
+  if(key===' ')toggle();else if(key==='c')calibrate();else if(key==='r')recall();else if(key==='shift')queueAction('shortDash','local-keyboard');else if(key==='q')queueAction('longDash','local-keyboard');else if(key==='f')queueAction('fireAtWill','local-keyboard');else if(key==='g')toggleAutonomy('local-keyboard');else if(key==='y')decideProposal(true);else if(key==='n')decideProposal(false);
 });
 document.addEventListener('keyup',event=>keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur',()=>{calibration.cancel();keys.clear();qaMissingHands.clear();pause();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();qaMissingHands.clear();camera.stop('Page backgrounded · activate camera again');if(source==='camera')source='off';}});
-window.addEventListener('pagehide',()=>camera.stop('Page closed'));
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopVoice();keys.clear();qaMissingHands.clear();camera.stop('Page backgrounded · activate camera again');if(source==='camera')source='off';}});
+window.addEventListener('pagehide',()=>{stopVoice();camera.stop('Page closed');});
 function synthetic(now:number){
   if(qaAim&&view){const target=view.projectFixtureTarget(qaAim,sim);syntheticAim.x+=(target.x-syntheticAim.x)*.15;syntheticAim.y+=(target.y-syntheticAim.y)*.15;}
   syntheticAim.x=clamp(syntheticAim.x+((keys.has('arrowright')?1:0)-(keys.has('arrowleft')?1:0))*.012);
@@ -221,19 +256,24 @@ function loop(now:number){
   if(stage==='arena'&&previousPreview&&!controls.preview&&!out.commit&&!controls.paused)sim.message='No order sent; use your configured Deploy input over a visible candidate';
   if(lastEpoch!==controls.epoch)clearPending();
   if(controls.preview)practiceFeedback.clear();
-  if(out.recall){if(stage==='arena')pending.push(sim.envelope({type:'RECALL'},'local-hand-recall',`cmd-${++commandId}`));else practiceFeedback.recall(now);}
+  if(out.recall){if(stage==='arena'){voiceRecall.invalidate();pending.push(sim.envelope({type:'RECALL'},'local-hand-recall',`cmd-${++commandId}`));}else practiceFeedback.recall(now);}
   if(out.commit){if(stage==='arena')pending.push(sim.envelope({type:'INTERCEPT',targetId:out.commit},'local-hand-commit',`cmd-${++commandId}`));else practiceFeedback.commit(out.commit,now);}
   if(stage==='arena'&&controls.inputArmed)for(const action of out.actions??[])queueAction(action,'local-hand');
   if(stage==='arena')clock.advance(now,controls.paused||document.hidden||renderState!=='ready'||!view,()=>{const commands=pending;pending=[];const before=sim.accepted;const frame={...out.frame,aim:aim.point};const intents:ActionIntent[]=queuedActions.map(item=>sim.intent(item.action==='fireAtWill'?{type:'DRONE_POLICY',enabled:!sim.fireAtWill,mode:preferredPolicy}:{type:'DASH',kind:item.action==='shortDash'?'short':'long',direction:sim.dashDirection(frame)},item.source));queuedActions=[];
   if(queuedPolicy){intents.push(sim.intent({type:'DRONE_POLICY',enabled:sim.fireAtWill,mode:queuedPolicy}));queuedPolicy=null;}
-  sim.step(frame,commands,session.autofire&&controls.inputArmed,intents);if(commands.length)controls.acknowledgeCommand(sim.accepted>before);});else clock.reset();
-  if(stage==='arena'&&(sim.outcome!=='playing'||(sim.mode==='training'&&sim.trainingStep===5))){resumeIntent.cancel();if(!controls.paused){controls.pause(sim.mode==='training'?'Practice complete':sim.message);clearPending();}}
+  if(queuedAutonomy){intents.push(sim.intent({type:'AUTONOMY',enabled:queuedAutonomy.enabled,fire:queuedAutonomy.enabled},queuedAutonomy.source));queuedAutonomy=null;}
+  // Agent envelopes are created here, at the tick they are stepped (fresh id, run and tick); pilot commands still outrank them.
+  const agentCommands=agentController.drain(sim);void before;
+  sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
+  if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
+  if(stage==='arena'&&(sim.outcome!=='playing'||(sim.mode==='training'&&sim.trainingStep===5))){resumeIntent.cancel();if(!controls.paused){stopVoice();controls.pause(sim.mode==='training'?'Practice complete':sim.message);clearPending();}}
   if(!controls.inputArmed)sim.stopFire();
   const blocked=weaponBlock(now),fireText=practiceFire.text(out.frame.fire,controls.latest?.hands.find(h=>h.side===session.bindings.pilotFire.hand),blocked,session.bindings.pilotFire,session.durationMs);
   const unitHand=session.bindings.padisarahFire.hand,unitPose=unitHand==='Left'?controls.bindings.left:controls.bindings.right;
   const unitText=!controls.inputArmed?'Blocked: paused / fresh open-hand recovery required':!sim.fireAtWill&&!(session.autofire&&!sim.directAutofireSuppressed)&&!unitPose?`Blocked: ${unitHand} hand gesture uncertain`:stage==='arena'?sim.fireState:out.frame.padisarahFire?'Fire input held (practice only)':'Holding fire';
   for(const id of ['unit-fire-status','camera-unit-fire','practice-unit-fire'])el(id).textContent=`Padisarah: ${unitText}${sim.fireAtWill?' | FAW '+sim.preferredPolicy+' / AUTO FIRE ON':session.autofire&&!sim.directAutofireSuppressed?' | DIRECT AUTO FIRE ON':' | manual'}${stage==='controls'?' | '+actionLabel('padisarahFire'):''}`;
-  renderLog();renderAbilities();
+  renderLog();renderAbilities();renderSupervisor();
   if(stage==='arena'&&view&&renderState!=='lost')view.draw(sim,controls.preview,aim.point,aim.target);
   el('tracking-preview').hidden=source!=='camera';el('toggle-camera-preview').hidden=stage!=='arena'||settingsOpen;el('toggle-camera-preview').textContent=showCameraDuringPlay?'Hide camera preview':'Show camera preview';
   trackingPreview.render(video,now,controls.epoch,source==='camera'&&camera.active&&!document.hidden,source==='camera'&&camera.loading&&!document.hidden,out.frame.fire&&!blocked,session.bindings.pilotFire.hand);
@@ -295,7 +335,18 @@ function loop(now:number){
   el('target-label').style.left=`${50+pointer.x*44}%`;el('target-label').style.top=`${50-pointer.y*36}%`;
   el('practice-reticle').style.left=`${50+pointer.x*43}%`;el('practice-reticle').style.top=`${42-pointer.y*32}%`;el('practice-reticle').classList.toggle('firing',out.frame.fire);
   el('practice-feedback').textContent=practiceFeedback.text(now,controls.paused?'Control test paused':controls.preview?`${controls.preview} · hold ${(dwell/1000).toFixed(1)} / ${(controls.bindings.holdMs/1000).toFixed(1)} s`:out.frame.fire?'FIRE held':`MOVE ${out.frame.move.x.toFixed(1)}, ${out.frame.move.y.toFixed(1)}`);
-  previousPreview=controls.preview;lastDraw=now;renderCommandReadiness(controls.commandReadiness(now));if(stage==='arena')inspector?.(sim,lastWorldAim??sim.position,controls.trackingStatus(performance.now()));requestAnimationFrame(loop);
+  previousPreview=controls.preview;lastDraw=now;renderCommandReadiness(controls.commandReadiness(now));
+  if(stage==='arena'){
+    const tracking=source==='camera'&&camera.ready?controls.trackingStatus(now):'';
+    const hands=source==='synthetic'?'Keyboard rehearsal · camera off'
+      :source==='off'?'Camera off'
+      :calibration.pending?'Calibrating'
+      :camera.ready?(controls.paused?'Tracking · arena paused':!controls.inputArmed?'Tracking · open hands to resume':'Tracking')
+      :camera.status;
+    inspector?.render(sim,lastWorldAim??sim.position,tracking,hands);
+    renderVoiceStatus();
+  }
+  requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 if(qaEnabled){
@@ -377,11 +428,42 @@ if(qaEnabled){
 }
 if(qaEnabled){el('probe').hidden=false;el('probe').onclick=async()=>{const result=el('probe-result');const button=el<HTMLButtonElement>('probe');if(camera.active||camera.loading){result.textContent='Stop the webcam before this synthetic-only check.';return;}button.disabled=true;const unavailable=await checkWebcamAssets();if(unavailable||camera.active||camera.loading){button.disabled=false;result.textContent=unavailable??'Stop the webcam before this synthetic-only check.';return;}result.textContent='Loading local model · blank synthetic image only';const worker=new Worker('/tracking-worker.js');const timeout=setTimeout(()=>{worker.terminate();button.disabled=false;result.textContent='FAIL: local worker timeout';},30000);worker.onerror=()=>{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent='FAIL: worker error';};worker.onmessage=async({data})=>{if(data.type==='ready'){const canvas=new OffscreenCanvas(640,480);canvas.getContext('2d')!.fillRect(0,0,640,480);const bitmap=canvas.transferToImageBitmap();worker.postMessage({type:'frame',bitmap,epoch:0,sequence:1,capturedAt:performance.now()},[bitmap]);}else{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent=data.type==='observation'?`PASS: local model processed blank synthetic image; ${data.hands.length} hands, ${data.processingMs.toFixed(1)} ms (not camera latency)`:'FAIL: '+data.message;}};worker.postMessage({type:'init'});};}
 
-inspector=installInspector(()=>view?.resize(),()=>openSettings());
+inspector=installInspector(()=>view?.resize(),()=>openSettings())??null;
 const mechPanel=document.createElement('section');mechPanel.id='mech-panel';el('weapon-status').before(mechPanel);mechPanel.append(el('weapon-status'));const booster=document.createElement('div');booster.innerHTML='<output id="booster-status">Booster ready</output><div class="ability-buttons"><button id="short-dash">Short / Shift</button><button id="long-dash">Long / Q</button></div>';mechPanel.append(booster);
 const policyPanel=document.createElement('div');policyPanel.className='ability-buttons';policyPanel.innerHTML='<button id="fire-at-will" aria-pressed="false">FAW OFF / F</button><select id="faw-mode" aria-label="Fire at will policy"><option value="A">A / Mech nearest</option><option value="B">B / Each unit nearest</option><option disabled>C / Priority (planned)</option></select>';el('padisarah-panel').append(policyPanel);
 el('short-dash').onclick=()=>queueAction('shortDash','local-button');el('long-dash').onclick=()=>queueAction('longDash','local-button');el('fire-at-will').onclick=()=>queueAction('fireAtWill','local-button');el<HTMLSelectElement>('faw-mode').onchange=()=>{if(!gameplayActive())return;preferredPolicy=el<HTMLSelectElement>('faw-mode').value as DronePolicy;queuedPolicy=preferredPolicy;};
 function gameplayActive(){return stage==='arena'&&!settingsOpen&&!document.hidden&&!controls.paused&&controls.inputArmed&&sim.outcome==='playing'&&renderState==='ready';}
+const voiceButton=el<HTMLButtonElement>('voice-toggle');
+const voiceStatus=el('voice-status');
+let voiceState:import('./voice-recall').VoiceStatus='off';
+let voiceDetail='';
+const voiceLabels={off:'Off',connecting:'Connecting',listening:'Listening',speaking:'Agent speaking',unavailable:'Unavailable'};
+function voiceRunning(){return voiceState==='connecting'||voiceState==='listening'||voiceState==='speaking';}
+function renderVoiceStatus(){
+  const running=voiceRunning();
+  const text=voiceState==='off'&&!gameplayActive()?'Off · Resume to start voice'
+    :voiceLabels[voiceState]+(voiceDetail?' · '+voiceDetail:'');
+  if(voiceStatus.textContent!==text)voiceStatus.textContent=text;
+  const disabled=!running&&!gameplayActive();
+  if(voiceButton.disabled!==disabled)voiceButton.disabled=disabled;
+}
+const voiceRecall=createVoiceRecall(() => recall('local-voice-recall'), (state, detail) => {
+  voiceState=state;voiceDetail=detail??'';
+  voiceButton.textContent=voiceRunning()?'Stop voice':'Start voice';
+  el('privacy-mode').textContent=voiceRunning()?'VOICE USES ELEVENLABS':'LOCAL ONLY · NO RECORDING';
+  if(state==='off'||state==='unavailable')inspector?.voiceTranscript.discardPartial();
+  renderVoiceStatus();
+}, event=>inspector?.voiceTranscript.update(event),
+// The same ElevenLabs agent may also call the seven supervisor tools (proposals / autonomy rules apply; see src/agent/README.md).
+()=>getSupervisorTools()?.adapters.clientTools()??{});
+function stopVoice(){if(voiceState!=='off')voiceRecall.stop();}
+voiceButton.onclick=()=>{
+  if(voiceRunning())stopVoice();
+  else if(gameplayActive()){
+    inspector?.showVoice();
+    void voiceRecall.start();
+  }
+};
 function queueAction(action:ExtraAction,source:ActionIntent['source']){if(!gameplayActive())return;if(action==='fireAtWill'&&sim.mode==='training'){sim.message='Fire at will unavailable in guided manual practice; use Deploy and manual fire.';return;}if(!queuedActions.some(q=>q.action===action))queuedActions.push({action,source});}
 function renderAbilities(){const enabled=gameplayActive();el('booster-status').textContent='Booster: '+sim.boosterState;for(const id of ['short-dash','long-dash'])el<HTMLButtonElement>(id).disabled=!enabled||sim.tick<sim.dashReadyAt;const button=el<HTMLButtonElement>('fire-at-will');button.disabled=!enabled||sim.mode==='training';button.textContent=sim.mode==='training'?'FAW unavailable':sim.fireAtWill?'FAW ON / F':'FAW OFF / F';button.title=sim.mode==='training'?'Guided practice requires manual assignments and fire':'Automatic targeting and fire. Accepted manual Deploy or Recall exits this policy.';button.setAttribute('aria-pressed',String(sim.fireAtWill));el<HTMLSelectElement>('faw-mode').disabled=!enabled||sim.mode==='training';el<HTMLSelectElement>('faw-mode').value=preferredPolicy;}
 

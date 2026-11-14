@@ -12,6 +12,8 @@
     "setup:webcam": "node scripts/setup-webcam.mjs"
   },
   "dependencies": {
+    "@alexanderolsen/libsamplerate-js": "2.1.2",
+    "@elevenlabs/client": "1.36.1",
     "@mediapipe/tasks-vision": "0.10.21",
     "three": "0.185.1"
   },

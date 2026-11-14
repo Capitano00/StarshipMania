@@ -3,6 +3,9 @@ import {installInspector,renderCommandReadiness} from './arena-inspector';
 let lastWorldAim:{x:number;y:number}|null=null,lastAimRun='',lastAimEpoch=-1;
 let inspector:ReturnType<typeof installInspector>|null=null;
 import './style.css';
+// StarshipMania tactical HUD + arena effects (presentation only; `?classic` restores the original look).
+import {ArenaFx} from './fx/arena-fx';
+const hudClassic=new URLSearchParams(location.search).has('classic');let fx:ArenaFx|null=null;
 import {checkWebcamAssets} from './webcam-assets';
 import {gestureCatalogue} from './gesture-guide';
 import {actions,bindingLabel,type ActionId,type ExtraAction} from './gestures';
@@ -142,6 +145,7 @@ function enterArena(mode:'combat'|'training'='combat'){
   if(settingsOpen||!controls.calibrated||renderState!=='ready')return;
   calibration.cancel();pause();if(sim.mode!==mode)resetRound(mode);
   if(!view){try{view=new ArenaView(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return;}}
+  if(!fx&&!hudClassic&&view.scene){try{fx=new ArenaFx(view.scene,view.renderer);}catch{fx=null;}}
   renderMessage='';stage='arena';showCameraDuringPlay=false;trackingPreview.setVisible(false);
   el('arena').append(el('tracking-preview'));el('paused-settings').append(el('calibration-guide'));el('setup').hidden=true;el('arena').hidden=false;
   // Mode changes can change canvas height without a window resize event.
@@ -234,7 +238,7 @@ function loop(now:number){
   const unitText=!controls.inputArmed?'Blocked: paused / fresh open-hand recovery required':!sim.fireAtWill&&!(session.autofire&&!sim.directAutofireSuppressed)&&!unitPose?`Blocked: ${unitHand} hand gesture uncertain`:stage==='arena'?sim.fireState:out.frame.padisarahFire?'Fire input held (practice only)':'Holding fire';
   for(const id of ['unit-fire-status','camera-unit-fire','practice-unit-fire'])el(id).textContent=`Padisarah: ${unitText}${sim.fireAtWill?' | FAW '+sim.preferredPolicy+' / AUTO FIRE ON':session.autofire&&!sim.directAutofireSuppressed?' | DIRECT AUTO FIRE ON':' | manual'}${stage==='controls'?' | '+actionLabel('padisarahFire'):''}`;
   renderLog();renderAbilities();
-  if(stage==='arena'&&view&&renderState!=='lost')view.draw(sim,controls.preview,aim.point,aim.target);
+  if(stage==='arena'&&view&&renderState!=='lost'){fx?.update(sim,controls.preview,aim.target);view.draw(sim,controls.preview,aim.point,aim.target);}
   el('tracking-preview').hidden=source!=='camera';el('toggle-camera-preview').hidden=stage!=='arena'||settingsOpen;el('toggle-camera-preview').textContent=showCameraDuringPlay?'Hide camera preview':'Show camera preview';
   trackingPreview.render(video,now,controls.epoch,source==='camera'&&camera.active&&!document.hidden,source==='camera'&&camera.loading&&!document.hidden,out.frame.fire&&!blocked,session.bindings.pilotFire.hand);
   for(const [side,id]of [['Left','left-dot'],['Right','right-dot']]as const){const hand=controls.latest?.hands.find(h=>h.side===side);const dot=el(id);dot.style.opacity=hand?'1':'.2';if(hand){const center=controls.neutral?.[side==='Left'?'left':'right']??{x:side==='Left'?.3:.7,y:.5};dot.style.left=`${clamp(50+(hand.palm.x-center.x)*300,5,95)}%`;dot.style.top=`${clamp(50+(hand.palm.y-center.y)*300,10,90)}%`;}}

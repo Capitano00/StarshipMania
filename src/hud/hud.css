@@ -1,0 +1,159 @@
+/*
+ * StarshipMania · Tactical Hologram HUD
+ * Tokens mirror the Figma "HUD" variable collection (code syntax var(--hud-*)).
+ * Everything is scoped under body.hud-v2 so `?classic` restores the original UI.
+ */
+:root{
+  --hud-void:#070E16;--hud-glass:#0B1722;--hud-raised:#13222F;--hud-hairline:#2B4152;
+  --hud-drone:#CBB7F4;--hud-pilot:#90DCD1;--hud-enemy:#FFB65D;--hud-preview:#F4D577;--hud-critical:#FF7A6B;
+  --hud-text:#EAF2F4;--hud-text-2:#9FB3BD;--hud-text-3:#6F8592;
+  --hud-s1:4px;--hud-s2:8px;--hud-s3:12px;--hud-s4:16px;--hud-r1:2px;--hud-r2:6px;
+  --hud-glass-bg:rgba(11,23,34,.74);--hud-mono:"Roboto Mono","Cascadia Mono",Consolas,ui-monospace,monospace;
+  --hud-cut:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));
+}
+
+/* ---------- Full-bleed arena: the play surface owns the screen ---------- */
+body.hud-v2 #arena-shell{position:relative}
+body.hud-v2 #mission-bar{position:absolute;inset:0 0 auto 0;z-index:7;min-height:52px;border:0;padding:6px 14px;background:linear-gradient(180deg,rgba(7,14,22,.94),rgba(7,14,22,0));pointer-events:none}
+body.hud-v2 #mission-bar>*{pointer-events:auto}
+body.hud-v2 #arena-workspace{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important;position:relative}
+body.hud-v2 #training-banner{position:absolute;z-index:7;top:54px;left:50%;transform:translateX(-50%);max-width:min(720px,70%);border:1px solid rgba(203,183,244,.5);background:var(--hud-glass-bg);backdrop-filter:blur(12px);clip-path:var(--hud-cut)}
+
+/* Mission stats as a compact telemetry strip */
+body.hud-v2 #mission-stats .stats{gap:22px!important}
+body.hud-v2 #mission-stats .stats>span{display:flex;flex-direction:column;gap:2px;font-size:9px!important;letter-spacing:1.6px;color:var(--hud-text-3);font-weight:600}
+body.hud-v2 #mission-stats .stats b{font-family:var(--hud-mono);font-size:17px!important;color:var(--hud-text);font-weight:500;letter-spacing:0}
+body.hud-v2 #mission-stats .stats meter{width:110px;height:3px}
+body.hud-v2 #mission-stats .stats small{font-size:8px!important;color:var(--hud-text-3)}
+body.hud-v2 #mission-actions button{background:rgba(11,23,34,.7);border:1px solid var(--hud-hairline);border-radius:var(--hud-r1);color:var(--hud-text-2);font-size:11px;min-height:28px}
+body.hud-v2 #mission-actions button:hover{border-color:var(--hud-drone);color:var(--hud-text)}
+
+/* ---------- Tactical (right) rail: the old inspector, compact glass overlay ---------- */
+body.hud-v2 #arena-inspector{position:absolute!important;z-index:6;top:72px;right:12px;bottom:auto;width:292px;max-height:calc(100% - 140px);display:flex!important;flex-direction:column;gap:8px;padding:10px;overflow:auto;border:1px solid var(--hud-hairline)!important;background:var(--hud-glass-bg)!important;backdrop-filter:blur(14px);clip-path:var(--hud-cut);transition:transform .22s ease,opacity .22s ease;scrollbar-width:thin}
+body.hud-v2.hud-rail-collapsed #arena-inspector{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
+body.hud-v2 #inspector-status{max-height:none!important;overflow:visible!important;gap:6px!important}
+body.hud-v2 #tracking-line{display:none}
+body.hud-v2 #arena-inspector .fire-status{min-height:0!important;padding:6px 9px!important;font-size:11.5px!important;border-radius:var(--hud-r1)!important;border-width:1px 1px 1px 3px!important;background:rgba(19,34,47,.8)!important}
+body.hud-v2 #inspector-map{margin:0!important;display:flex;align-items:center;gap:10px;text-align:left}
+body.hud-v2 #inspector-map .eyebrow{font-size:9px;letter-spacing:1.4px;color:var(--hud-text-3);writing-mode:vertical-rl;transform:rotate(180deg)}
+body.hud-v2 #minimap{width:112px!important;height:112px!important;margin:0!important;opacity:.92}
+body.hud-v2 #inspector-aux{min-height:0}
+body.hud-v2 #inspector-aux [role=tab]{font-size:10.5px;padding:5px;min-height:26px;background:transparent;border-color:var(--hud-hairline);border-radius:var(--hud-r1);letter-spacing:.4px}
+body.hud-v2 #inspector-aux [aria-selected=true]{border-color:var(--hud-drone);color:var(--hud-text);background:rgba(203,183,244,.08)}
+body.hud-v2 #arena-inspector #log-scroll{max-height:168px!important;height:auto}
+body.hud-v2 #log-entries li{height:auto;min-height:30px;border-top:1px solid rgba(43,65,82,.6);border-left:2px solid var(--hud-hairline);font-family:var(--hud-mono);font-size:10.5px;background:transparent}
+body.hud-v2 #log-entries li:first-child{background:rgba(203,183,244,.1);border-left-color:var(--hud-drone)}
+body.hud-v2 .hud-rail-toggle{position:absolute;z-index:8;top:72px;right:312px;padding:4px 8px;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;background:var(--hud-glass-bg);border:1px solid var(--hud-hairline);border-radius:var(--hud-r1);color:var(--hud-text-2);pointer-events:auto;transition:right .22s ease}
+body.hud-v2.hud-rail-collapsed .hud-rail-toggle{right:12px;border-color:var(--hud-drone);color:var(--hud-drone)}
+
+/* ---------- Shared HUD primitives ---------- */
+.hud-root{position:absolute;inset:0;pointer-events:none;z-index:4;font-size:12px;color:var(--hud-text)}
+.hud-panel{position:absolute;background:var(--hud-glass-bg);border:1px solid var(--hud-hairline);backdrop-filter:blur(14px);clip-path:var(--hud-cut);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.hud-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.hud-eyebrow{font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;font-weight:650;color:var(--hud-text-3)}
+.hud-accent{color:var(--hud-drone)}
+.hud-mono{font-family:var(--hud-mono);font-size:10px;letter-spacing:.3px}
+.hud-dim{color:var(--hud-text-3)}
+
+/* ---------- Squad rail ---------- */
+.hud-left{top:72px;left:12px;width:262px}
+.hud-drones{display:flex;flex-direction:column;gap:6px}
+.hud-drone{--accent:var(--hud-pilot);position:relative;padding:8px 10px 8px 13px;background:rgba(19,34,47,.82);border:1px solid var(--hud-hairline);clip-path:polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);transition:border-color .2s,box-shadow .2s}
+.hud-drone::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.hud-drone[data-state=engaging],.hud-drone[data-state=moving]{--accent:var(--hud-drone);border-color:rgba(203,183,244,.55);box-shadow:inset 0 0 18px rgba(203,183,244,.12)}
+.hud-drone[data-state=returning]{--accent:var(--hud-pilot)}
+.hud-drone[data-state=standby]{--accent:var(--hud-text-3)}
+.hud-drone[data-state=blocked]{--accent:var(--hud-critical);border-color:rgba(255,122,107,.5)}
+.hud-drone-head{display:flex;align-items:center;gap:8px}
+.hud-drone-head .hud-eyebrow{flex:1;font-size:8.5px}
+.hud-callsign{font-family:var(--hud-mono);font-size:15px;font-weight:500;color:var(--hud-text)}
+.hud-tag{font-size:8px;font-weight:700;letter-spacing:1.1px;padding:1px 5px;border:1px solid var(--accent);color:var(--accent);border-radius:var(--hud-r1)}
+.hud-drone[data-authority=agent] .hud-tag{border-color:var(--hud-drone);color:var(--hud-drone)}
+.hud-task{font-family:var(--hud-mono);font-size:11.5px;font-weight:500;color:var(--accent);margin:4px 0}
+.hud-meter{height:3px;background:var(--hud-hairline);margin:2px 0 4px}
+.hud-meter span{display:block;height:100%;background:var(--hud-enemy);box-shadow:0 0 6px var(--hud-enemy);transition:width .25s ease}
+.hud-drone small{font-size:9.5px;display:block;line-height:1.3}
+
+.hud-targets{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:0;padding:0;list-style:none}
+.hud-target{--c:var(--hud-text-2);position:relative;display:flex;justify-content:space-between;align-items:center;padding:4px 6px 5px;border:1px solid color-mix(in srgb,var(--c) 55%,transparent);background:rgba(19,34,47,.7);border-radius:var(--hud-r1);font-size:8px;letter-spacing:1px;font-weight:700;color:var(--c);overflow:hidden}
+.hud-target b{font-family:var(--hud-mono);font-size:10.5px;font-weight:500;letter-spacing:0}
+.hud-target::after{content:'';position:absolute;left:0;bottom:0;height:2px;width:calc(var(--hull,1)*100%);background:var(--c);opacity:.8}
+.hud-target[data-state=armed]{--c:var(--hud-enemy)}
+.hud-target[data-state=assigned]{--c:var(--hud-drone)}
+.hud-target[data-state=locked]{--c:var(--hud-preview);box-shadow:0 0 12px rgba(244,213,119,.35)}
+.hud-target[data-state=down]{--c:var(--hud-text-3);opacity:.55;text-decoration:line-through}
+
+/* ---------- Agent link + recommendation (top of the tactical rail) ---------- */
+.hud-agent{display:flex;flex-direction:column;gap:8px}
+.hud-links{display:flex;flex-wrap:wrap;gap:6px}
+.hud-chip{--c:var(--hud-text-3);display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid color-mix(in srgb,var(--c) 60%,transparent);border-radius:999px;background:rgba(11,23,34,.8);font-size:8.5px;letter-spacing:1.2px}
+.hud-chip i{width:6px;height:6px;border-radius:50%;background:var(--c)}
+.hud-chip b{color:var(--hud-text-2);font-weight:700}
+.hud-chip span{font-family:var(--hud-mono);color:var(--c)}
+.hud-chip[data-state=live]{--c:var(--hud-pilot)}
+.hud-chip[data-state=live] i{box-shadow:0 0 8px var(--c);animation:hud-pulse 1.4s ease-in-out infinite}
+.hud-transcript{margin:0;padding:6px 9px;border-left:2px solid var(--hud-pilot);background:rgba(144,220,209,.08);font-size:11.5px;line-height:1.4;color:var(--hud-text)}
+.hud-transcript[data-partial=true]{color:var(--hud-text-2);font-style:italic}
+.hud-rec{--c:var(--hud-drone);display:flex;flex-direction:column;gap:6px;padding:11px 12px;border:1px solid var(--c);background:rgba(11,23,34,.9);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));animation:hud-in .25s ease-out}
+.hud-rec[data-status=pending]{box-shadow:inset 0 0 26px rgba(203,183,244,.18)}
+.hud-rec[data-status=accepted]{--c:var(--hud-pilot)}
+.hud-rec[data-status=dismissed],.hud-rec[data-status=expired]{--c:var(--hud-text-3);opacity:.7}
+.hud-rec[data-status=recalled]{--c:var(--hud-critical)}
+.hud-rec-head{display:flex;align-items:center;gap:7px}
+.hud-rec-head i{width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c)}
+.hud-rec-head .hud-eyebrow{color:var(--c)}
+.hud-rec-title{font-size:15px;font-weight:600;color:var(--hud-text)}
+.hud-rec-reason{margin:0;font-size:11px;line-height:1.4;color:var(--hud-text-2)}
+.hud-rec-status{color:var(--c)}
+.hud-rec-actions{display:flex;gap:6px}
+.hud-btn{flex:1;padding:6px 8px;font-size:11px;font-weight:600;border-radius:var(--hud-r1);border:1px solid var(--hud-drone);background:transparent;color:var(--hud-drone)}
+.hud-btn-primary{background:var(--hud-drone);color:var(--hud-void)}
+.hud-btn:disabled{opacity:.45}
+.hud-rec small{font-size:9px}
+
+/* ---------- Command toasts ---------- */
+.hud-toasts{position:absolute;top:64px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px}
+.hud-toast{--c:var(--hud-drone);display:flex;align-items:center;gap:10px;padding:7px 14px;background:rgba(11,23,34,.86);border:1px solid var(--c);backdrop-filter:blur(10px);clip-path:var(--hud-cut);box-shadow:0 0 22px color-mix(in srgb,var(--c) 30%,transparent);animation:hud-toast 2.8s ease forwards}
+.hud-toast .hud-eyebrow{color:var(--c)}
+.hud-toast strong{font-size:11px;color:var(--hud-text);font-weight:500}
+.hud-toast[data-severity=success]{--c:var(--hud-drone)}
+.hud-toast[data-severity=warn]{--c:var(--hud-enemy)}
+.hud-toast[data-severity=info]{--c:var(--hud-text-2)}
+.hud-toast[data-severity=critical]{--c:var(--hud-critical);padding:9px 18px}
+.hud-toast[data-severity=critical] .hud-eyebrow{font-size:11px}
+
+/* ---------- Gesture strip + reticle dwell ---------- */
+.hud-gesture{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:6px 12px;background:var(--hud-glass-bg);border:1px solid var(--hud-hairline);backdrop-filter:blur(12px);clip-path:var(--hud-cut);white-space:nowrap;max-width:calc(100% - 600px)}
+.hud-hands{color:var(--hud-pilot)}
+.hud-cmd{display:inline-flex;gap:6px;align-items:baseline;font-size:10px;color:var(--hud-text-2);overflow:hidden;text-overflow:ellipsis}
+.hud-cmd b{font-size:8.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--hud-text-3)}
+.hud-cmd[data-ready=true] span{color:var(--hud-drone)}
+.hud-dwell-track{width:90px;height:3px;background:var(--hud-hairline);flex:none}
+.hud-dwell-fill{display:block;height:100%;width:0;background:var(--hud-preview);box-shadow:0 0 8px var(--hud-preview)}
+body.hud-v2 #reticle{width:30px;height:30px;border-color:rgba(234,242,244,.85);box-shadow:0 0 10px rgba(144,220,209,.35)}
+body.hud-v2 #reticle:before{left:14px;height:40px}
+body.hud-v2 #reticle:after{top:14px;width:40px}
+body.hud-v2 #reticle.firing{border-color:#ffc77c;box-shadow:0 0 14px #ffb65d}
+.hud-reticle-ring{position:absolute;inset:-9px;border-radius:50%;background:conic-gradient(var(--hud-preview) calc(var(--hud-dwell,0)*360deg),transparent 0);-webkit-mask:radial-gradient(circle,transparent 62%,#000 64%);mask:radial-gradient(circle,transparent 62%,#000 64%);opacity:.95;filter:drop-shadow(0 0 4px var(--hud-preview))}
+body.hud-v2 #reticle.hud-locked{border-color:var(--hud-preview)}
+body.hud-v2 #target-label{font-family:var(--hud-mono);font-size:10px!important;letter-spacing:.4px;padding:3px 7px;background:rgba(7,14,22,.72);border-left:2px solid var(--hud-preview);color:var(--hud-text);text-shadow:none}
+
+/* ---------- Camera preview: compact draggable PiP (bottom-left) ---------- */
+body.hud-v2 #arena>.tracking-preview{top:auto;right:auto;left:var(--hud-pip-left,12px);bottom:12px;width:250px;z-index:6;padding:7px;background:var(--hud-glass-bg);border:1px solid var(--hud-hairline);backdrop-filter:blur(12px);clip-path:var(--hud-cut)}
+body.hud-v2 #arena>.tracking-preview.hud-pip-moved{top:var(--hud-pip-top);bottom:auto}
+body.hud-v2 #arena>.tracking-preview .tracking-heading{cursor:move;font-size:10px;letter-spacing:1px;text-transform:uppercase;gap:8px}
+body.hud-v2 #arena>.tracking-preview .tracking-heading button{font-size:9.5px;padding:3px 7px}
+body.hud-v2 #arena>.tracking-preview canvas{max-height:150px;width:100%;object-fit:contain}
+body.hud-v2 #arena>.tracking-preview .tracking-legend{display:none}
+body.hud-v2 #arena>.tracking-preview #camera-feedback{font-size:10px;line-height:1.3;margin:4px 0}
+body.hud-v2 #arena>.tracking-preview .fire-status{min-height:0!important;padding:4px 7px!important;font-size:10.5px!important;line-height:1.3!important;margin-top:4px;border-width:1px 1px 1px 3px!important}
+
+/* ---------- Pause / results as hologram dialogs ---------- */
+body.hud-v2 #arena-workspace #pause-overlay,body.hud-v2 #arena-workspace #results-panel{background:rgba(11,23,34,.9)!important;border:1px solid var(--hud-drone)!important;border-radius:0!important;backdrop-filter:blur(16px);clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));box-shadow:none!important;z-index:9}
+
+@keyframes hud-pulse{50%{opacity:.35}}
+@keyframes hud-in{from{opacity:0;transform:translateY(-4px)}}
+@keyframes hud-toast{0%{opacity:0;transform:translateY(-6px)}8%{opacity:1;transform:none}82%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.hud-toast,.hud-rec,.hud-chip i{animation:none!important}body.hud-v2 #arena-inspector{transition:none}}
+@media (max-width:980px){.hud-left{display:none}.hud-gesture{max-width:calc(100% - 330px);left:12px;transform:none}}
+@media (max-width:700px){body.hud-v2 #arena-inspector{width:min(292px,calc(100% - 24px));max-height:45%}.hud-gesture,.hud-rail-toggle{display:none}}

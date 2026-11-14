@@ -5,7 +5,9 @@ let inspector:ReturnType<typeof installInspector>|null=null;
 import './style.css';
 // StarshipMania tactical HUD + arena effects (presentation only; `?classic` restores the original look).
 import {ArenaFx} from './fx/arena-fx';
-const hudClassic=new URLSearchParams(location.search).has('classic');let fx:ArenaFx|null=null;
+import {mountHud,type HudHandle} from './hud/hud';
+import {hudFeed} from './hud/feed';
+const hudClassic=new URLSearchParams(location.search).has('classic');let fx:ArenaFx|null=null,hud:HudHandle|null=null;
 import {checkWebcamAssets} from './webcam-assets';
 import {gestureCatalogue} from './gesture-guide';
 import {actions,bindingLabel,type ActionId,type ExtraAction} from './gestures';
@@ -238,7 +240,7 @@ function loop(now:number){
   const unitText=!controls.inputArmed?'Blocked: paused / fresh open-hand recovery required':!sim.fireAtWill&&!(session.autofire&&!sim.directAutofireSuppressed)&&!unitPose?`Blocked: ${unitHand} hand gesture uncertain`:stage==='arena'?sim.fireState:out.frame.padisarahFire?'Fire input held (practice only)':'Holding fire';
   for(const id of ['unit-fire-status','camera-unit-fire','practice-unit-fire'])el(id).textContent=`Padisarah: ${unitText}${sim.fireAtWill?' | FAW '+sim.preferredPolicy+' / AUTO FIRE ON':session.autofire&&!sim.directAutofireSuppressed?' | DIRECT AUTO FIRE ON':' | manual'}${stage==='controls'?' | '+actionLabel('padisarahFire'):''}`;
   renderLog();renderAbilities();
-  if(stage==='arena'&&view&&renderState!=='lost'){fx?.update(sim,controls.preview,aim.target);view.draw(sim,controls.preview,aim.point,aim.target);}
+  if(stage==='arena'&&view&&renderState!=='lost'){fx?.update(sim,controls.preview,aim.target);view.draw(sim,controls.preview,aim.point,aim.target);hud?.update({sim,preview:controls.preview,aimed:aim.target});}
   el('tracking-preview').hidden=source!=='camera';el('toggle-camera-preview').hidden=stage!=='arena'||settingsOpen;el('toggle-camera-preview').textContent=showCameraDuringPlay?'Hide camera preview':'Show camera preview';
   trackingPreview.render(video,now,controls.epoch,source==='camera'&&camera.active&&!document.hidden,source==='camera'&&camera.loading&&!document.hidden,out.frame.fire&&!blocked,session.bindings.pilotFire.hand);
   for(const [side,id]of [['Left','left-dot'],['Right','right-dot']]as const){const hand=controls.latest?.hands.find(h=>h.side===side);const dot=el(id);dot.style.opacity=hand?'1':'.2';if(hand){const center=controls.neutral?.[side==='Left'?'left':'right']??{x:side==='Left'?.3:.7,y:.5};dot.style.left=`${clamp(50+(hand.palm.x-center.x)*300,5,95)}%`;dot.style.top=`${clamp(50+(hand.palm.y-center.y)*300,10,90)}%`;}}
@@ -382,6 +384,7 @@ if(qaEnabled){
 if(qaEnabled){el('probe').hidden=false;el('probe').onclick=async()=>{const result=el('probe-result');const button=el<HTMLButtonElement>('probe');if(camera.active||camera.loading){result.textContent='Stop the webcam before this synthetic-only check.';return;}button.disabled=true;const unavailable=await checkWebcamAssets();if(unavailable||camera.active||camera.loading){button.disabled=false;result.textContent=unavailable??'Stop the webcam before this synthetic-only check.';return;}result.textContent='Loading local model · blank synthetic image only';const worker=new Worker('/tracking-worker.js');const timeout=setTimeout(()=>{worker.terminate();button.disabled=false;result.textContent='FAIL: local worker timeout';},30000);worker.onerror=()=>{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent='FAIL: worker error';};worker.onmessage=async({data})=>{if(data.type==='ready'){const canvas=new OffscreenCanvas(640,480);canvas.getContext('2d')!.fillRect(0,0,640,480);const bitmap=canvas.transferToImageBitmap();worker.postMessage({type:'frame',bitmap,epoch:0,sequence:1,capturedAt:performance.now()},[bitmap]);}else{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent=data.type==='observation'?`PASS: local model processed blank synthetic image; ${data.hands.length} hands, ${data.processingMs.toFixed(1)} ms (not camera latency)`:'FAIL: '+data.message;}};worker.postMessage({type:'init'});};}
 
 inspector=installInspector(()=>view?.resize(),()=>openSettings());
+hud=hudClassic?null:mountHud();if(hud&&qaEnabled)Object.assign(globalThis,{__hudFeed:hudFeed});
 const mechPanel=document.createElement('section');mechPanel.id='mech-panel';el('weapon-status').before(mechPanel);mechPanel.append(el('weapon-status'));const booster=document.createElement('div');booster.innerHTML='<output id="booster-status">Booster ready</output><div class="ability-buttons"><button id="short-dash">Short / Shift</button><button id="long-dash">Long / Q</button></div>';mechPanel.append(booster);
 const policyPanel=document.createElement('div');policyPanel.className='ability-buttons';policyPanel.innerHTML='<button id="fire-at-will" aria-pressed="false">FAW OFF / F</button><select id="faw-mode" aria-label="Fire at will policy"><option value="A">A / Mech nearest</option><option value="B">B / Each unit nearest</option><option disabled>C / Priority (planned)</option></select>';el('padisarah-panel').append(policyPanel);
 el('short-dash').onclick=()=>queueAction('shortDash','local-button');el('long-dash').onclick=()=>queueAction('longDash','local-button');el('fire-at-will').onclick=()=>queueAction('fireAtWill','local-button');el<HTMLSelectElement>('faw-mode').onchange=()=>{if(!gameplayActive())return;preferredPolicy=el<HTMLSelectElement>('faw-mode').value as DronePolicy;queuedPolicy=preferredPolicy;};

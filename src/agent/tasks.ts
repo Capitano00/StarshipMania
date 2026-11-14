@@ -41,7 +41,7 @@ export interface TaskRecord {
 export interface TaskEvent { taskId: string; unit: string; kind: TaskKind; target: TargetId | null; status: TaskStatus; tick: number; detail: string | null }
 export interface TaskProposal { unit: string; kind: TaskKind; target?: TargetId | null; reason?: string | null }
 
-type SimView = Pick<Simulation, 'runId' | 'tick' | 'funnels' | 'turrets' | 'commandLog' | 'padisarahFire' | 'lastHit' | 'accepted'>;
+type SimView = Pick<Simulation, 'runId' | 'tick' | 'funnels' | 'turrets' | 'commandLog' | 'padisarahFire' | 'lastHit' | 'accepted' | 'autonomy'>;
 
 export class TaskTracker {
   private tasks = new Map<string, TaskRecord>();
@@ -140,9 +140,11 @@ export class TaskTracker {
       this.blockedSince.delete(task.id);
       if (task.kind === 'intercept') {
         const atPosition = unit.status === 'At firing position';
-        task.firing = atPosition && sim.padisarahFire;
+        // Same rule as the simulation: pilot fire permission, or an autonomy grant with fire for an autonomous assignment.
+        const permitted = sim.padisarahFire || (sim.autonomy.fire && unit.autonomous);
+        task.firing = atPosition && permitted;
         if (task.status === 'accepted') emit(task, 'executing', atPosition ? null : 'Moving to firing position');
-        task.detail = atPosition ? (sim.padisarahFire ? 'Engaging' : 'Holding fire: no drone fire permission') : 'Moving to firing position';
+        task.detail = atPosition ? (permitted ? (sim.padisarahFire ? 'Engaging' : 'Engaging (autonomous fire)') : 'Holding fire: no drone fire permission') : 'Moving to firing position';
       } else {
         if (task.status === 'accepted') emit(task, 'executing', 'Returning to pilot');
         if (unit.status === 'Following') emit(task, 'completed', 'Back in escort formation');

@@ -28,7 +28,10 @@ export class Simulation {
   this.pilotFire=pilot;this.padisarahFire=units;
  }
  get fireState(){
-  if(!this.padisarahFire)return 'Holding fire';
+  if(!this.padisarahFire){
+   const auto=this.autonomy.fire?this.funnels.filter(f=>f.autonomous&&f.order.type==='INTERCEPT'):[];
+   return auto.length?`Autonomous fire: ${auto.map(f=>f.id).join(', ')}`:'Holding fire';
+  }
   if(this.funnels.every(f=>f.blocked))return 'Blocked: no reachable firing position';
   if(this.padisarahFiring)return 'Firing';
   if(this.funnels.some(f=>f.order.type==='INTERCEPT'))return this.funnels.map(f=>f.id+': '+f.status).join(' / ');

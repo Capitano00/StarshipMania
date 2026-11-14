@@ -168,3 +168,15 @@ describe('pilot-controlled autonomy', () => {
     expect(new Simulation('run-2').autonomy.enabled).toBe(false);
   });
 });
+
+describe('pilot fire readout', () => {
+  it('reports autonomous fire instead of "Holding fire" only when the autonomy grant applies', () => {
+    const s = new Simulation();
+    expect(s.fireState).toBe('Holding fire');
+    autonomy(s, true, true);
+    s.step(neutralFrame(), [env(s, {type: 'INTERCEPT', targetId: 'T4'}, 'U1', 'local-autonomous')]);
+    expect(s.fireState).toBe('Autonomous fire: U1');
+    autonomy(s, false);
+    expect(s.fireState).toBe('Holding fire');
+  });
+});

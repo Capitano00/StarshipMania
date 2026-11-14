@@ -19,13 +19,83 @@ Each teammate gives Boyong one relevant example of work, availability, and wheth
 
 | Target | Outcome |
 | --- | --- |
-| Sat 15:15–15:35 | Agree demo trigger and acceptance criteria. Confirm access, files and owners. Review the readiness PR before branching if time permits. |
-| Sat 15:35–17:45 | Build the rule and HUD in parallel. QA sets up a clean checkout and writes the repeatable demo steps. |
+| Sat 15:45–16:05 | Agree demo trigger and acceptance criteria. Confirm access, files and owners. Review the readiness PR before branching if time permits. |
+| Sat 16:05–17:45 | Build the rule and HUD in parallel. QA writes repeatable demo steps. The gameplay helper runs a separate 20-minute ElevenLabs research check by 16:25. |
 | Sat 17:45–19:00 | Integrate and run a full scenario. If late, trim to one readable panel and keep Recall and recording time. |
 | Sat 19:45–20:45 | Fix blocking issues and record a backup on the known-good build. |
 | Sun 10:00 | Freeze and rehearse clean `main`. Verify the video and links. |
 | Sun 11:00 | Boyong submits and checks the receipt if the entry package is ready. |
 | Sun 12:00 | Official submission cutoff. [Event rules](https://imperial-ai-hackathon.devpost.com/rules) |
+
+## Role actions and agent prompts
+
+Start with your role below. The times are London working targets. If your task depends on the design decision, inspect the baseline and prepare test cases while Boyong locks the trigger.
+
+### 1. Boyong · Manager and main coder
+
+**Start now** · Open StarshipMania in Codex. Give everyone 20 minutes to agree the trigger, demo input and who edits each file.
+
+- **15:45–16:05** · Choose one trigger. Agree what Accept, Dismiss and Recall do. Post the HUD state/actions and reproducible arena setup for Roles 2–4.
+- **16:05–17:15** · Own the wiring in main.ts and simulation.ts. Create the integration branch. Make Recall clear the proposed action and invalidate stale acceptance.
+- **17:15–19:00** · Review the rule and HUD PRs. Integrate and run the full flow with QA. At 17:45, cut extras if it cannot be played end to end.
+- **Sun 10:00–11:00** · Freeze, verify the reviewed commit and submission links, then submit and check the receipt.
+
+**Handoff** · Scope decision and file boundaries → merged playable commit and QA evidence.
+
+**Copy into your agent**
+
+> Read AGENTS.md and the team guide in draft PR #1. Inspect the current simulation, Recall and input flow. First propose the smallest interface between a local regroup rule, the HUD and the game, with the files each teammate owns. Wait for my trigger and scope decision. Then work on codex/boyong-integration, wire the agreed interfaces and test that Recall clears a pending or accepted recommendation and beats a stale acceptance. Keep steering working. Show the diff and checks and stop before pushing.
+
+### 2. Figma Make / UI coder · Prototype and HUD PR
+
+**Start now** · Open Figma Make with sample data. Sketch one small HUD panel for a drone recommendation, its reason and the pilot’s choices.
+
+- **15:45–16:05** · Draft pending, accepted, dismissed and recalled states with fake data. Agree the labels and actions with Boyong.
+- **16:05–17:15** · Open your own StarshipMania checkout in Codex or Claude Code. Port the agreed panel and styles. Keep keyboard access and avoid stealing focus while steering.
+- **17:15–17:45** · Run the build and check UI states. Push the UI branch and open a PR with the Figma link, a screenshot and exact browser steps.
+- **17:45–19:00** · Pair with Boyong and QA to check the HUD on the integrated branch. Fix only issues that affect the demo.
+
+**Handoff** · Figma Make prototype → focused HUD PR and keyboard/browser check.
+
+**Copy into your agent**
+
+> Read AGENTS.md and the team guide in draft PR #1. I own the recommendation HUD on codex/ui-hud. Use my Figma Make design and the agreed example states. Propose a small renderer and styles with Accept and Dismiss buttons and a visible reason. Keep changes inside the files Boyong assigns. Send shared wiring requests to Boyong. Run the build, list the checks I should make in Synthetic Rehearsal and show the diff before I commit.
+
+### 3. Gameplay helper · Drone rule and ElevenLabs research
+
+**Start now** · Open your own StarshipMania checkout. Use a build chat for the drone rule and a separate read-only chat for a 20-minute ElevenLabs check.
+
+- **15:45–16:05** · Compare triggers with the team. Get the agreed inputs, threshold or condition and reason text from Boyong.
+- **16:05–16:25** · Start the ElevenLabs research prompt. Return a short go/no-go with access, integration effort and fallback while keeping the rule as the first coding task.
+- **16:05–17:15** · Build the local rule in an isolated TypeScript module. Add focused tests for a trigger, no trigger and an invalid or stale input if the agreed interface permits it.
+- **17:15–17:45** · Open the rule PR with the inputs, output example and test command. Help QA reproduce the trigger. Live voice is a separate task only after core QA passes.
+
+**Handoff** · Tested local recommendation PR → brief voice feasibility note for Boyong.
+
+**Copy into your agent**
+
+> Read AGENTS.md and the team guide in draft PR #1. On codex/gameplay-regroup, implement only the agreed local regroup decision and its focused tests. Given a small game-state snapshot, return one recommendation and reason or return none. Keep the rule independent from the HUD, microphone and game loop. Do not send player commands or integrate a model. Show the passing cases, changed files and test command before I commit.
+
+**Copy into a separate research chat**
+
+> Read official ElevenLabs docs for Realtime Agents, client tools and authentication. In 20 minutes, recommend spoken explanation first or a two-way voice experiment later. Report confirmed team access or unknown, where it would connect to the game, what permissions and server-side auth it needs, and a rough time estimate. Treat accept/dismiss as proposed actions validated locally, keep Recall and keyboard fallback local, and keep secrets out of the browser. Return go/no-go with source links. Research only.
+
+[ElevenLabs client tools](https://elevenlabs.io/docs/eleven-agents/customization/tools/client-tools) · [Agent authentication](https://elevenlabs.io/docs/eleven-agents/customization/authentication)
+
+### 4. Independent QA · Feature checks and demo
+
+**Start now** · Clone the game on your machine. Ask your agent to help you run the baseline and write a checklist you can follow yourself.
+
+- **15:45–16:15** · Run clean Synthetic Rehearsal and record the baseline commit. Draft a repeatable test for steering, trigger, Accept, Dismiss, pending Recall, accepted Recall and Retry.
+- **17:15–17:45** · Review the rule and HUD PRs. Run the exact revision when available and report the commit, expected outcome, actual outcome and any blocker.
+- **17:45–19:00** · Play the integrated flow independently. Check stale acceptance after Recall and that the demo works without camera, mic or sponsor credentials.
+- **19:45–20:45 / Sun 10:00** · Record a two-minute backup from the last verified build. Rehearse after freeze and verify the judge-facing links.
+
+**Handoff** · Pass/fail results on an exact commit → short demo and backup recording.
+
+**Copy into your agent**
+
+> Read AGENTS.md and the team guide in draft PR #1. Help me check a clean checkout in Synthetic Rehearsal. Give me the exact commands and browser steps. On the reviewed commit check steering during the recommendation, Accept, Dismiss, Recall pending and after acceptance, stale acceptance and Retry. Keep the camera off. Record commit, steps, expected and actual behaviour and known failures. Review and report only. Do not edit or merge.
 
 ## From a first change to a merge
 

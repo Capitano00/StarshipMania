@@ -1,5 +1,5 @@
 import {arenaBounds} from './arena-layout';
-import {clamp,finitePoint,neutralFrame,targetIds,type ActionIntent,type ActionPayload,type DronePolicy,type DashKind,type CommandEnvelope,type Order,type PilotControlFrame,type TargetId,type Vec2} from './contracts';
+import {clamp,finitePoint,neutralFrame,targetIds,type ActionIntent,type ActionPayload,type DronePolicy,type DashKind,type CommandEnvelope,type CommandGroup,type Order,type PilotControlFrame,type TargetId,type Vec2} from './contracts';
 import {barriers,clearLine,firstBarrier,freePoint,length,route,slidePath,movingImpact,sweepCircle} from './cover';
 import {RoundEvents} from './round-events';
 export const actorDefinitions=[
@@ -13,6 +13,8 @@ export const actorDefinitions=[
 export type Turret={id:TargetId;position:Vec2;health:number;cooldown:number;armed:boolean;patrol:readonly Vec2[];waypoint:number};
 export type Projectile={id:number;position:Vec2;velocity:Vec2;team:'pilot'|'enemy'|'funnel';life:number;assignment?:number;shooter?:string;assignmentOrigin?:'manual'|'auto';assignedTarget?:TargetId};
 export type Funnel={id:string;order:Order;origin:'manual'|'auto';assignment:number;status:string;position:Vec2;cooldown:number;destination:Vec2;requested:Vec2;path:Vec2[];waypoint:number;blocked:boolean;revision:number};
+/** One command outcome. `assignment` is the units' new assignment number when accepted (origin 'manual'). */
+export type CommandRecord={commandId:string|null;tick:number;group:string|null;provenance:string|null;order:Order|null;outcome:'accepted'|'rejected';reason?:string;units:string[];assignment?:number};
 const direction=(a:Vec2,b:Vec2)=>{const d=length(a,b)||1;return {x:(b.x-a.x)/d,y:(b.y-a.y)/d};};
 export class Simulation {
  tick=0;health=100;position={x:0,y:15};outcome:'playing'|'won'|'lost'='playing';readonly barriers=barriers;
@@ -80,6 +82,19 @@ export class Simulation {
  lastHit:{id:number;tick:number;target:TargetId;team:'pilot'|'funnel';shooter?:string;assignmentOrigin?:'manual'|'auto';assignment?:number;assignedTarget?:TargetId}|null=null;
  lastImpact:{tick:number;position:Vec2;team:Projectile['team']}|null=null;
  private seen=new Set<string>();private shotId=0;private fireCooldown=0;private recalledAtTick=-1;private hitId=0;private trainingAssignment=0;
+ /** Per-unit Recalls accepted (the group Recall keeps counting in `recalls`). */
+ unitRecalls=0;
+ private unitRecalledAt=new Map<string,number>();
+ /** Bounded, newest-first record of every command outcome, for task tracking and read-only agent views. */
+ readonly commandLog:CommandRecord[]=[];
+ private unitsFor(group:unknown){return group==='funnels'?this.funnels:this.funnels.filter(f=>f.id===group);}
+ private record(value:unknown,outcome:'accepted'|'rejected',reason?:string,units:string[]=[],assignment?:number){
+  const c=(value&&typeof value==='object'&&!Array.isArray(value)?value:{}) as Record<string,unknown>,text=(x:unknown)=>typeof x==='string'?x.slice(0,64):null;
+  const p=c.payload as {type?:unknown;targetId?:unknown}|null|undefined;
+  const order:Order|null=!p||typeof p!=='object'?null:p.type==='RECALL'?{type:'RECALL'}:p.type==='INTERCEPT'&&targetIds.includes(p.targetId as TargetId)?{type:'INTERCEPT',targetId:p.targetId as TargetId}:null;
+  this.commandLog.unshift({commandId:text(c.commandId),tick:this.tick,group:text(c.group),provenance:text(c.provenance),order,outcome,reason,units,assignment});
+  if(this.commandLog.length>64)this.commandLog.length=64;
+ }
  constructor(public readonly runId='run-1',public readonly mode:'combat'|'training'='combat',unitCount=2){
   if(!Number.isSafeInteger(unitCount)||unitCount<1||unitCount>16)throw new Error('Invalid fixture unit count');
   this.funnels=Array.from({length:unitCount},(_,i)=>{const x=(i-(unitCount-1)/2)*3.6;return {id:'U'+(i+1),order:{type:'RECALL'},origin:'manual',assignment:0,status:'Following',position:{x,y:11},destination:{x,y:11},requested:{x,y:11},cooldown:i*12,path:[],waypoint:0,blocked:false,revision:-1};});
@@ -101,29 +116,37 @@ export class Simulation {
   '5 / 5 - Let both units reach their resolved follow positions.',
   'Practice complete - deployment, a real unit hit, redirect and return confirmed.'
  ][this.trainingStep];}
- envelope(payload:Order,provenance:CommandEnvelope['provenance'],commandId:string):CommandEnvelope{return {schemaId:'CommandEnvelope.v1',version:1,commandId,runId:this.runId,issuedAtTick:this.tick,expiresAtTick:this.tick+12,group:'funnels',provenance,payload};}
+ envelope(payload:Order,provenance:CommandEnvelope['provenance'],commandId:string,group:CommandGroup='funnels'):CommandEnvelope{return {schemaId:'CommandEnvelope.v1',version:1,commandId,runId:this.runId,issuedAtTick:this.tick,expiresAtTick:this.tick+12,group,provenance,payload};}
  private validate(value:unknown):string|null {
   if(!value||typeof value!=='object'||Array.isArray(value))return 'Invalid command';
   const c=value as CommandEnvelope,keys=Object.keys(c).sort().join(',');
   if(keys!==['schemaId','version','commandId','runId','issuedAtTick','expiresAtTick','group','provenance','payload'].sort().join(','))return 'Invalid envelope fields';
-  if(c.schemaId!=='CommandEnvelope.v1'||c.version!==1||c.group!=='funnels')return 'Unsupported envelope';
+  if(c.schemaId!=='CommandEnvelope.v1'||c.version!==1||(c.group!=='funnels'&&!this.funnels.some(f=>f.id===c.group)))return 'Unsupported envelope';
   if(typeof c.commandId!=='string'||!/^cmd-[0-9]{1,9}$/.test(c.commandId)||c.runId!==this.runId)return 'Invalid command identity';
   if(this.seen.has(c.commandId)||this.seen.size>=4096)return 'Duplicate command or session budget reached';
   if(!Number.isSafeInteger(c.issuedAtTick)||!Number.isSafeInteger(c.expiresAtTick)||c.issuedAtTick<0||c.expiresAtTick<0||c.issuedAtTick>this.tick||c.expiresAtTick<this.tick||c.expiresAtTick-c.issuedAtTick<0||c.expiresAtTick-c.issuedAtTick>12)return 'Expired or invalid timing';
   const p=c.payload;if(!p||typeof p!=='object'||Array.isArray(p))return 'Invalid payload';
-  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall')?null:'Invalid recall authority';
-  if(p.type!=='INTERCEPT'||Object.keys(p).sort().join(',')!=='targetId,type'||c.provenance!=='local-hand-commit'||!targetIds.includes(p.targetId))return 'Invalid intercept authority or target';
+  if(c.group!=='funnels'&&this.mode==='training')return 'Per-unit orders unavailable in guided practice';
+  // The group (emergency) Recall stays pilot-input only; a per-unit Recall may also come from an approved proposal.
+  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall'||(c.group!=='funnels'&&c.provenance==='local-approved-proposal'))?null:'Invalid recall authority';
+  if(p.type!=='INTERCEPT'||Object.keys(p).sort().join(',')!=='targetId,type'||(c.provenance!=='local-hand-commit'&&c.provenance!=='local-approved-proposal')||!targetIds.includes(p.targetId))return 'Invalid intercept authority or target';
   if(this.recalledAtTick===this.tick)return 'Recall takes precedence';
+  if(this.unitsFor(c.group).some(f=>this.unitRecalledAt.get(f.id)===this.tick))return 'Recall takes precedence';
   if(!this.turrets.some(t=>t.id===p.targetId&&t.health>0))return 'Target no longer available';return null;
  }
  accept(value:unknown){
-  const failure=this.validate(value);if(failure){this.rejected++;this.message=`Rejected: ${failure}`;this.events.add(this.tick,'Command','Rejected',failure);return false;}
+  const failure=this.validate(value);if(failure){this.rejected++;this.message=`Rejected: ${failure}`;this.events.add(this.tick,'Command','Rejected',failure);this.record(value,'rejected',failure);return false;}
   const c=value as CommandEnvelope;this.seen.add(c.commandId);this.accepted++;this.manualCommandTick=this.tick;
-  if(this.fireAtWill){this.fireAtWill=false;this.directAutofireSuppressed=true;this.manualOverrideTick=this.tick;this.fireInputs(this.pilotFire,false);this.events.add(this.tick,'Fire at will','Disabled','Accepted manual group order');}
-  for(const f of this.funnels)this.assignUnit(f,c.payload,'manual',this.accepted);
-  if(c.payload.type==='RECALL'){this.recalls++;this.recalledAtTick=this.tick;this.message='Recall accepted - returning to follow positions';}
-  else{this.deployments++;this.message=`Assignment accepted: ${c.payload.targetId}`;}
-  this.events.add(this.tick,c.payload.type==='RECALL'?'Recall':'Deploy / redirect','Accepted',this.message,c.payload.type==='INTERCEPT'?c.payload.targetId:null);
+  const units=this.unitsFor(c.group),perUnit=c.group!=='funnels';
+  if(this.fireAtWill){this.fireAtWill=false;this.directAutofireSuppressed=true;this.manualOverrideTick=this.tick;this.fireInputs(this.pilotFire,false);this.events.add(this.tick,'Fire at will','Disabled',perUnit?'Accepted manual unit order':'Accepted manual group order');}
+  for(const f of units)this.assignUnit(f,c.payload,'manual',this.accepted);
+  if(c.payload.type==='RECALL'){
+   if(perUnit){this.unitRecalls++;this.unitRecalledAt.set(c.group,this.tick);this.message=`${c.group} recall accepted - returning to follow position`;}
+   else{this.recalls++;this.recalledAtTick=this.tick;this.message='Recall accepted - returning to follow positions';}
+  }
+  else{this.deployments++;this.message=perUnit?`${c.group} assignment accepted: ${c.payload.targetId}`:`Assignment accepted: ${c.payload.targetId}`;}
+  this.events.add(this.tick,c.payload.type==='RECALL'?(perUnit?'Unit recall':'Recall'):(perUnit?'Unit deploy':'Deploy / redirect'),'Accepted',this.message,c.payload.type==='INTERCEPT'?c.payload.targetId:null);
+  this.record(value,'accepted',undefined,units.map(f=>f.id),this.accepted);
   if(this.mode==='training'){
    if(this.trainingStep===0&&c.payload.type==='INTERCEPT'&&c.payload.targetId==='T1'){this.trainingStep=1;this.trainingAssignment=this.accepted;}
    else if(this.trainingStep===1){if(c.payload.type==='INTERCEPT'&&c.payload.targetId==='T1')this.trainingAssignment=this.accepted;else this.trainingStep=0;}
@@ -134,9 +157,13 @@ export class Simulation {
   this.planUnits();return true;
  }
  commands(values:unknown[]){
-  const recall=values.find(v=>!!v&&typeof v==='object'&&(v as CommandEnvelope).payload?.type==='RECALL'&&!this.validate(v));
-  if(recall){this.accept(recall);for(const other of values.slice(0,8))if(other!==recall){this.rejected++;this.events.add(this.tick,'Command','Rejected','Recall takes precedence');}return;}
-  for(const value of values.slice(0,8))this.accept(value);
+  // The group Recall is absolute: it wins the whole batch, whatever the queue order.
+  const recall=values.find(v=>!!v&&typeof v==='object'&&(v as CommandEnvelope).payload?.type==='RECALL'&&(v as CommandEnvelope).group==='funnels'&&!this.validate(v));
+  if(recall){this.accept(recall);for(const other of values.slice(0,8))if(other!==recall){this.rejected++;this.events.add(this.tick,'Command','Rejected','Recall takes precedence');this.record(other,'rejected','Recall takes precedence');}return;}
+  // A per-unit Recall wins over same-tick orders for that unit only, so it is applied first.
+  const unitRecall=(v:unknown)=>!!v&&typeof v==='object'&&(v as CommandEnvelope).payload?.type==='RECALL'&&(v as CommandEnvelope).group!=='funnels';
+  const batch=values.slice(0,8);
+  for(const value of [...batch.filter(unitRecall),...batch.filter(v=>!unitRecall(v))])this.accept(value);
  }
  private planUnits(){this.funnels.forEach((f,i)=>this.planUnit(f,i));}
  private planUnit(f:Funnel,index:number){

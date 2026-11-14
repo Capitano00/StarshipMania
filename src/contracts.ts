@@ -4,7 +4,7 @@ export type Order = { type: 'INTERCEPT'; targetId: TargetId } | { type: 'RECALL'
 export interface CommandEnvelope {
   schemaId: 'CommandEnvelope.v1'; version: 1; commandId: string; runId: string;
   issuedAtTick: number; expiresAtTick: number; group: 'funnels';
-  provenance: 'local-hand-commit' | 'local-keyboard-recall' | 'local-hand-recall'; payload: Order;
+  provenance: 'local-hand-commit' | 'local-keyboard-recall' | 'local-hand-recall' | 'local-voice-recall'; payload: Order;
 }
 export interface PilotControlFrame { move: Vec2; aim: Vec2; fire: boolean; padisarahFire?: boolean }
 export const neutralFrame = (): PilotControlFrame => ({move:{x:0,y:0},aim:{x:0,y:0},fire:false});

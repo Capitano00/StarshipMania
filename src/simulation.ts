@@ -111,7 +111,7 @@ export class Simulation {
   if(this.seen.has(c.commandId)||this.seen.size>=4096)return 'Duplicate command or session budget reached';
   if(!Number.isSafeInteger(c.issuedAtTick)||!Number.isSafeInteger(c.expiresAtTick)||c.issuedAtTick<0||c.expiresAtTick<0||c.issuedAtTick>this.tick||c.expiresAtTick<this.tick||c.expiresAtTick-c.issuedAtTick<0||c.expiresAtTick-c.issuedAtTick>12)return 'Expired or invalid timing';
   const p=c.payload;if(!p||typeof p!=='object'||Array.isArray(p))return 'Invalid payload';
-  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall')?null:'Invalid recall authority';
+  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall'||c.provenance==='local-voice-recall')?null:'Invalid recall authority';
   if(p.type!=='INTERCEPT'||Object.keys(p).sort().join(',')!=='targetId,type'||c.provenance!=='local-hand-commit'||!targetIds.includes(p.targetId))return 'Invalid intercept authority or target';
   if(this.recalledAtTick===this.tick)return 'Recall takes precedence';
   if(!this.turrets.some(t=>t.id===p.targetId&&t.health>0))return 'Target no longer available';return null;
@@ -123,7 +123,7 @@ export class Simulation {
   for(const f of this.funnels)this.assignUnit(f,c.payload,'manual',this.accepted);
   if(c.payload.type==='RECALL'){this.recalls++;this.recalledAtTick=this.tick;this.message='Recall accepted - returning to follow positions';}
   else{this.deployments++;this.message=`Assignment accepted: ${c.payload.targetId}`;}
-  this.events.add(this.tick,c.payload.type==='RECALL'?'Recall':'Deploy / redirect','Accepted',this.message,c.payload.type==='INTERCEPT'?c.payload.targetId:null);
+  this.events.add(this.tick,c.payload.type==='RECALL'?'Recall':'Deploy / redirect','Accepted',c.provenance==='local-voice-recall'?`${this.message} · Voice`:this.message,c.payload.type==='INTERCEPT'?c.payload.targetId:null);
   if(this.mode==='training'){
    if(this.trainingStep===0&&c.payload.type==='INTERCEPT'&&c.payload.targetId==='T1'){this.trainingStep=1;this.trainingAssignment=this.accepted;}
    else if(this.trainingStep===1){if(c.payload.type==='INTERCEPT'&&c.payload.targetId==='T1')this.trainingAssignment=this.accepted;else this.trainingStep=0;}

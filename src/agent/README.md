@@ -140,13 +140,15 @@ async function supervise(goal: string, runTool: (name: string, input: unknown) =
 }
 ```
 
-### ElevenLabs client tools (in the page)
+### ElevenLabs voice agent (already wired)
 
-Register each tool in the ElevenLabs agent configuration with the same name and parameters (from `specs()`). Then pass these handlers as the client tools of your ElevenLabs client session. Check ElevenLabs' client-tools docs for the exact option name in your SDK version; it isn't verified here.
+`src/voice-recall.ts` (the voice Recall from `main`) passes the seven tools to the same ElevenLabs session as client tools, alongside the guarded `recall_drones`. `main.ts` supplies them through `getSupervisorTools()?.adapters.clientTools()`.
+- `recall_drones` keeps its own phrase, once-only and expiry checks, and can't be replaced.
+- The supervisor tools answer only while that voice session is active.
 
-```ts
-const clientTools = getSupervisorTools()!.adapters.clientTools(); // {tool_name: (params) => JSON string}
-```
+**What you still have to do:** declare the tools you want (same names and parameters as `specs()`) on the published ElevenLabs agent, with **Wait for response** on. The agent can only call tools declared there. This dashboard step hasn't been done or verified by us.
+
+A spoken Recall (`'local-voice-recall'`) is pilot input. It's an emergency Recall that also switches autonomy off and makes older `state_token`s stale.
 
 The tool output strings already state the authority model, for example "Proposed to the pilot…", so the voice agent can explain them truthfully.
 

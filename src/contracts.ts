@@ -7,8 +7,12 @@ export type UnitId = `U${number}`;
 export type CommandGroup = 'funnels' | UnitId;
 /** Atomic multi-unit intercept plan (group 'funnels' only): every entry is accepted, or none. */
 export type SquadOrder = { type: 'SQUAD'; assignments: { unit: UnitId; targetId: TargetId }[] };
-/** Pilot-input provenances: these always outrank agent provenances in the same tick. */
-export const pilotProvenances = ['local-hand-commit', 'local-keyboard-recall', 'local-hand-recall'] as const;
+/**
+ * Pilot-input provenances: these always outrank agent provenances in the same tick.
+ * 'local-voice-recall' is the pilot's own spoken Recall (ElevenLabs recall_drones), so it is pilot input:
+ * an emergency Recall that also switches supervisor autonomy off. Voice may only Recall.
+ */
+export const pilotProvenances = ['local-hand-commit', 'local-keyboard-recall', 'local-hand-recall', 'local-voice-recall'] as const;
 export interface CommandEnvelope {
   schemaId: 'CommandEnvelope.v1'; version: 1; commandId: string; runId: string;
   issuedAtTick: number; expiresAtTick: number; group: CommandGroup;

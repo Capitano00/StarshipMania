@@ -155,7 +155,7 @@ export class Simulation {
   const pilotHeld=agent?affected.find(u=>this.pilotOrderedAt.get(u)===this.tick):undefined;
   if(pilotHeld)return this.recalledAtTick===this.tick||this.unitRecalledAt.get(pilotHeld)===this.tick?'Recall takes precedence':'Pilot order takes precedence';
   // The group (emergency) Recall stays pilot-input only; a per-unit Recall may also come from an agent.
-  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall'||(c.group!=='funnels'&&agent))?null:'Invalid recall authority';
+  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall'||c.provenance==='local-voice-recall'||(c.group!=='funnels'&&agent))?null:'Invalid recall authority';
   if(p.type==='SQUAD'){
    // Atomic plan: validated as a whole before anything is assigned.
    if(c.group!=='funnels'||!agent||Object.keys(p).sort().join(',')!=='assignments,type'||!Array.isArray(p.assignments)||p.assignments.length<1||p.assignments.length>this.funnels.length)return 'Invalid squad plan';
@@ -195,7 +195,7 @@ export class Simulation {
    else{this.recalls++;this.recalledAtTick=this.tick;this.message='Recall accepted - returning to follow positions';}
   }
   else{this.deployments++;this.message=perUnit?`${c.group} assignment accepted: ${p.targetId}${tag}`:`Assignment accepted: ${p.targetId}`;}
-  this.events.add(this.tick,p.type==='SQUAD'?'Squad deploy':p.type==='RECALL'?(perUnit?'Unit recall':'Recall'):(perUnit?'Unit deploy':'Deploy / redirect'),'Accepted',this.message,p.type==='INTERCEPT'?p.targetId:null);
+  this.events.add(this.tick,p.type==='SQUAD'?'Squad deploy':p.type==='RECALL'?(perUnit?'Unit recall':'Recall'):(perUnit?'Unit deploy':'Deploy / redirect'),'Accepted',c.provenance==='local-voice-recall'?`${this.message} · Voice`:this.message,p.type==='INTERCEPT'?p.targetId:null);
   this.record(value,'accepted',undefined,plan.map(([f])=>f.id),this.accepted);
   if(this.mode==='training'&&!squad){
    if(this.trainingStep===0&&c.payload.type==='INTERCEPT'&&c.payload.targetId==='T1'){this.trainingStep=1;this.trainingAssignment=this.accepted;}

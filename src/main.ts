@@ -13,6 +13,9 @@ import {PracticeFeedback,PracticeFireFeedback} from './practice';
 import {ResumeIntent} from './resume-intent';
 import {TrackingPreview} from './tracking-preview';
 import {GuidedCalibration} from './guided-calibration';
+import {AgentController} from './agent/controller';
+import {installSupervisorRuntime} from './agent/runtime';
+import {describeAction} from './agent/hud-bridge';
 import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
@@ -57,6 +60,21 @@ function refreshBindingGuide(){
 const fillBindings=installBindingSettings(()=>controls.configuration,config=>{if(!controls.setBindings(config))return false;session=controls.configuration;sim.setDirectAutofire();resumeIntent.cancel();calibration.cancel();clearPending();refreshBindingGuide();return true;});
 const pauseActions=document.createElement('div');pauseActions.className='buttons';pauseActions.innerHTML='<button id="menu-retry">Retry round</button><button id="menu-settings">Settings</button><button id="menu-bindings">Gesture bindings</button><button id="menu-guide">Gesture guide</button>';el('resume').after(pauseActions);
 const arenaActions=document.createElement('div');arenaActions.id='arena-actions';arenaActions.innerHTML='<button id="arena-pause">Pause / Esc</button><button id="arena-retry">Retry round</button>';el('arena').append(arenaActions);
+// Supervisor agent: proposals need pilot approval (Y / N) unless the pilot grants autonomy (G). See src/agent/README.md.
+const agentController=new AgentController();let queuedAutonomy:{enabled:boolean;source:ActionIntent['source']}|null=null;
+installSupervisorRuntime({getSim:()=>stage==='arena'?sim:null,controller:agentController},{exposeGlobal:qaEnabled||new URLSearchParams(location.search).has('supervisor')});
+const autonomyButton=document.createElement('button');autonomyButton.id='autonomy-toggle';autonomyButton.textContent='Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed','false');arenaActions.append(autonomyButton);
+const proposalPanel=document.createElement('section');proposalPanel.id='agent-proposal';proposalPanel.hidden=true;proposalPanel.setAttribute('aria-live','polite');proposalPanel.style.cssText='position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;display:flex;gap:8px;align-items:center;padding:8px 12px;background:#102430f0;border:1px solid #cbb7f4;border-radius:6px;font-size:12px;max-width:min(640px,92%)';
+proposalPanel.innerHTML='<strong id="agent-proposal-text"></strong><span id="agent-proposal-reason"></span><button id="agent-accept" class="primary">Accept / Y</button><button id="agent-dismiss">Dismiss / N</button>';el('arena').append(proposalPanel);
+function toggleAutonomy(source:ActionIntent['source']){if(!gameplayActive()||sim.mode!=='combat')return;queuedAutonomy={enabled:!sim.autonomy.enabled,source};}
+function decideProposal(accept:boolean){const p=stage==='arena'?agentController.pending().at(-1):undefined;if(!p)return;if(accept)agentController.approve(p.id,sim);else agentController.dismiss(p.id,sim.tick);}
+autonomyButton.onclick=()=>toggleAutonomy('local-button');el('agent-accept').onclick=()=>decideProposal(true);el('agent-dismiss').onclick=()=>decideProposal(false);
+function renderSupervisor(){
+ if(stage==='arena')agentController.observe(sim); // also while paused (e.g. right after Retry); pure and idempotent
+ const on=sim.autonomy.enabled;autonomyButton.textContent=on?`Autonomy ON${sim.autonomy.fire?' (may fire)':''} / G`:'Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed',String(on));autonomyButton.hidden=sim.mode!=='combat';
+ const p=stage==='arena'?agentController.pending().at(-1):undefined;proposalPanel.hidden=!p;
+ if(p){el('agent-proposal-text').textContent='Agent proposes: '+describeAction(p);el('agent-proposal-reason').textContent=p.reason?' · '+p.reason:'';}
+}
 const unitFire=document.createElement('div');unitFire.id='unit-fire-status';unitFire.className='fire-status';el('arena').append(unitFire);
 const cameraUnitFire=document.createElement('div');cameraUnitFire.id='camera-unit-fire';cameraUnitFire.className='fire-status';el('camera-fire').after(cameraUnitFire);
 const practiceUnitFire=document.createElement('div');practiceUnitFire.id='practice-unit-fire';practiceUnitFire.className='fire-status';el('practice-fire').after(practiceUnitFire);
@@ -167,7 +185,7 @@ document.addEventListener('keydown',event=>{
   if(event.target instanceof HTMLElement&&event.target.closest('input,textarea,select,[contenteditable="true"]'))return;
   if(key===' '&&event.target instanceof HTMLElement&&event.target.closest('button,a,summary,input,textarea,select,[contenteditable="true"]'))return;
   if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))event.preventDefault();keys.add(key);
-  if(key===' ')toggle();else if(key==='c')calibrate();else if(key==='r')recall();else if(key==='shift')queueAction('shortDash','local-keyboard');else if(key==='q')queueAction('longDash','local-keyboard');else if(key==='f')queueAction('fireAtWill','local-keyboard');
+  if(key===' ')toggle();else if(key==='c')calibrate();else if(key==='r')recall();else if(key==='shift')queueAction('shortDash','local-keyboard');else if(key==='q')queueAction('longDash','local-keyboard');else if(key==='f')queueAction('fireAtWill','local-keyboard');else if(key==='g')toggleAutonomy('local-keyboard');else if(key==='y')decideProposal(true);else if(key==='n')decideProposal(false);
 });
 document.addEventListener('keyup',event=>keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur',()=>{calibration.cancel();keys.clear();qaMissingHands.clear();pause();});
@@ -226,14 +244,19 @@ function loop(now:number){
   if(stage==='arena'&&controls.inputArmed)for(const action of out.actions??[])queueAction(action,'local-hand');
   if(stage==='arena')clock.advance(now,controls.paused||document.hidden||renderState!=='ready'||!view,()=>{const commands=pending;pending=[];const before=sim.accepted;const frame={...out.frame,aim:aim.point};const intents:ActionIntent[]=queuedActions.map(item=>sim.intent(item.action==='fireAtWill'?{type:'DRONE_POLICY',enabled:!sim.fireAtWill,mode:preferredPolicy}:{type:'DASH',kind:item.action==='shortDash'?'short':'long',direction:sim.dashDirection(frame)},item.source));queuedActions=[];
   if(queuedPolicy){intents.push(sim.intent({type:'DRONE_POLICY',enabled:sim.fireAtWill,mode:queuedPolicy}));queuedPolicy=null;}
-  sim.step(frame,commands,session.autofire&&controls.inputArmed,intents);if(commands.length)controls.acknowledgeCommand(sim.accepted>before);});else clock.reset();
+  if(queuedAutonomy){intents.push(sim.intent({type:'AUTONOMY',enabled:queuedAutonomy.enabled,fire:queuedAutonomy.enabled},queuedAutonomy.source));queuedAutonomy=null;}
+  // Agent envelopes are created here, at the tick they are stepped (fresh id, run and tick); pilot commands still outrank them.
+  const agentCommands=agentController.drain(sim);void before;
+  sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
+  if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
   if(stage==='arena'&&(sim.outcome!=='playing'||(sim.mode==='training'&&sim.trainingStep===5))){resumeIntent.cancel();if(!controls.paused){controls.pause(sim.mode==='training'?'Practice complete':sim.message);clearPending();}}
   if(!controls.inputArmed)sim.stopFire();
   const blocked=weaponBlock(now),fireText=practiceFire.text(out.frame.fire,controls.latest?.hands.find(h=>h.side===session.bindings.pilotFire.hand),blocked,session.bindings.pilotFire,session.durationMs);
   const unitHand=session.bindings.padisarahFire.hand,unitPose=unitHand==='Left'?controls.bindings.left:controls.bindings.right;
   const unitText=!controls.inputArmed?'Blocked: paused / fresh open-hand recovery required':!sim.fireAtWill&&!(session.autofire&&!sim.directAutofireSuppressed)&&!unitPose?`Blocked: ${unitHand} hand gesture uncertain`:stage==='arena'?sim.fireState:out.frame.padisarahFire?'Fire input held (practice only)':'Holding fire';
   for(const id of ['unit-fire-status','camera-unit-fire','practice-unit-fire'])el(id).textContent=`Padisarah: ${unitText}${sim.fireAtWill?' | FAW '+sim.preferredPolicy+' / AUTO FIRE ON':session.autofire&&!sim.directAutofireSuppressed?' | DIRECT AUTO FIRE ON':' | manual'}${stage==='controls'?' | '+actionLabel('padisarahFire'):''}`;
-  renderLog();renderAbilities();
+  renderLog();renderAbilities();renderSupervisor();
   if(stage==='arena'&&view&&renderState!=='lost')view.draw(sim,controls.preview,aim.point,aim.target);
   el('tracking-preview').hidden=source!=='camera';el('toggle-camera-preview').hidden=stage!=='arena'||settingsOpen;el('toggle-camera-preview').textContent=showCameraDuringPlay?'Hide camera preview':'Show camera preview';
   trackingPreview.render(video,now,controls.epoch,source==='camera'&&camera.active&&!document.hidden,source==='camera'&&camera.loading&&!document.hidden,out.frame.fire&&!blocked,session.bindings.pilotFire.hand);

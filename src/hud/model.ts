@@ -28,7 +28,7 @@ export function droneCards(sim: Simulation, telemetry: Record<string, DroneTelem
     return {
       id: f.id, callsign: f.id, state,
       task: {kind: targetId ? 'intercept' : state === 'standby' ? 'standby' : state === 'returning' ? 'recall' : 'follow', label, targetId},
-      authority: extra.authority ?? (f.origin === 'auto' ? 'auto' : 'pilot'),
+      authority: extra.authority ?? (f.autonomous ? 'agent' : f.origin === 'auto' ? 'auto' : 'pilot'),
       targetHull: target ? Math.max(0, target.health) / 100 : null,
       health: extra.health ?? null,
       reason: extra.reason,
@@ -46,6 +46,7 @@ export function objectives(sim: Simulation, preview: TargetId | null): Objective
 
 export function eventSeverity(e: Pick<RoundEvent, 'action' | 'outcome'>): HudSeverity {
   if (e.action === 'Recall' && e.outcome === 'Accepted') return 'critical';
+  if (e.action === 'Autonomy') return e.outcome === 'Enabled' ? 'success' : 'warn';
   if (/^(Rejected|Cancelled|Blocked)/.test(e.outcome)) return 'warn';
   if (/^(Accepted|Started|Enabled|Finished)/.test(e.outcome)) return 'success';
   return 'info';
@@ -58,7 +59,7 @@ export function toHudEvent(e: RoundEvent): HudEvent {
 
 /** Which simulation events deserve a transient on-screen acknowledgement. */
 export function toastWorthy(e: RoundEvent) {
-  return ['Recall', 'Deploy / redirect', 'Command', 'Fire at will'].includes(e.action) && e.outcome !== 'Finished';
+  return ['Recall', 'Deploy / redirect', 'Command', 'Fire at will', 'Unit deploy', 'Unit recall', 'Squad deploy', 'Autonomy'].includes(e.action) && e.outcome !== 'Finished';
 }
 
 export const formatTime = (tick: number) => (tick / 60).toFixed(1).padStart(4, '0') + 's';

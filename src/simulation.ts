@@ -1,5 +1,5 @@
 import {arenaBounds} from './arena-layout';
-import {clamp,finitePoint,neutralFrame,targetIds,type ActionIntent,type ActionPayload,type DronePolicy,type DashKind,type CommandEnvelope,type Order,type PilotControlFrame,type TargetId,type Vec2} from './contracts';
+import {clamp,finitePoint,neutralFrame,targetIds,type ActionIntent,type ActionPayload,type DronePolicy,type DashKind,type CommandEnvelope,type CommandGroup,type Order,type SquadOrder,pilotProvenances,type PilotControlFrame,type TargetId,type Vec2} from './contracts';
 import {barriers,clearLine,firstBarrier,freePoint,length,route,slidePath,movingImpact,sweepCircle} from './cover';
 import {RoundEvents} from './round-events';
 export const actorDefinitions=[
@@ -12,7 +12,9 @@ export const actorDefinitions=[
 ] as const;
 export type Turret={id:TargetId;position:Vec2;health:number;cooldown:number;armed:boolean;patrol:readonly Vec2[];waypoint:number};
 export type Projectile={id:number;position:Vec2;velocity:Vec2;team:'pilot'|'enemy'|'funnel';life:number;assignment?:number;shooter?:string;assignmentOrigin?:'manual'|'auto';assignedTarget?:TargetId};
-export type Funnel={id:string;order:Order;origin:'manual'|'auto';assignment:number;status:string;position:Vec2;cooldown:number;destination:Vec2;requested:Vec2;path:Vec2[];waypoint:number;blocked:boolean;revision:number};
+export type Funnel={id:string;order:Order;origin:'manual'|'auto';assignment:number;/** Assigned by an agent under autonomy: may fire at its own target when autonomy grants fire. */autonomous:boolean;status:string;position:Vec2;cooldown:number;destination:Vec2;requested:Vec2;path:Vec2[];waypoint:number;blocked:boolean;revision:number};
+/** One command outcome. `assignment` is the units' new assignment number when accepted (origin 'manual'). */
+export type CommandRecord={commandId:string|null;tick:number;group:string|null;provenance:string|null;order:Order|null;squad?:{unit:string;targetId:TargetId}[];outcome:'accepted'|'rejected';reason?:string;units:string[];assignment?:number};
 const direction=(a:Vec2,b:Vec2)=>{const d=length(a,b)||1;return {x:(b.x-a.x)/d,y:(b.y-a.y)/d};};
 export class Simulation {
  tick=0;health=100;position={x:0,y:15};outcome:'playing'|'won'|'lost'='playing';readonly barriers=barriers;
@@ -26,7 +28,10 @@ export class Simulation {
   this.pilotFire=pilot;this.padisarahFire=units;
  }
  get fireState(){
-  if(!this.padisarahFire)return 'Holding fire';
+  if(!this.padisarahFire){
+   const auto=this.autonomy.fire?this.funnels.filter(f=>f.autonomous&&f.order.type==='INTERCEPT'):[];
+   return auto.length?`Autonomous fire: ${auto.map(f=>f.id).join(', ')}`:'Holding fire';
+  }
   if(this.funnels.every(f=>f.blocked))return 'Blocked: no reachable firing position';
   if(this.padisarahFiring)return 'Firing';
   if(this.funnels.some(f=>f.order.type==='INTERCEPT'))return this.funnels.map(f=>f.id+': '+f.status).join(' / ');
@@ -54,6 +59,7 @@ export class Simulation {
   if(!value||Object.keys(value).sort().join(',')!=='id,payload,runId,source,tick'||value.runId!==this.runId||!Number.isSafeInteger(value.id)||value.id<1||this.seenIntents.has(value.id)||this.seenIntents.size>=4096||!Number.isSafeInteger(value.tick)||value.tick<0||value.tick>this.tick||this.tick-value.tick>12||!['local-hand','local-keyboard','local-button'].includes(value.source))return false;
   const p=value.payload;if(!p||typeof p!=='object')return false;
   if(p.type==='DRONE_POLICY')return Object.keys(p).sort().join(',')==='enabled,mode,type'&&typeof p.enabled==='boolean'&&['A','B'].includes(p.mode);
+  if(p.type==='AUTONOMY')return Object.keys(p).sort().join(',')==='enabled,fire,type'&&typeof p.enabled==='boolean'&&typeof p.fire==='boolean';
   return p.type==='DASH'&&Object.keys(p).sort().join(',')==='direction,kind,type'&&['short','long'].includes(p.kind)&&!!p.direction&&Object.keys(p.direction).sort().join(',')==='x,y'&&finitePoint(p.direction)&&Math.hypot(p.direction.x,p.direction.y)>.0001;
  }
  private applyIntents(values:readonly ActionIntent[]){
@@ -65,24 +71,54 @@ export class Simulation {
     if(this.dash||this.tick<this.dashReadyAt){this.events.add(this.tick,'Booster','Rejected','Shared cooldown; no queue');continue;}
     const magnitude=Math.hypot(p.direction.x,p.direction.y);this.dash={kind:p.kind,direction:{x:p.direction.x/magnitude,y:p.direction.y/magnitude},remaining:p.kind==='short'?12:18};this.dashReadyAt=this.tick+60;
     this.events.add(this.tick,'Booster','Started',p.kind+' / direction locked / no invulnerability');
+   }else if(p.type==='AUTONOMY'){
+    // Pilot-only grant (intents never come from agent code). Same guards as Fire at Will.
+    if(this.mode==='training'||this.manualCommandTick===this.tick){this.events.add(this.tick,'Autonomy','Rejected',this.mode==='training'?'Unavailable in guided manual practice':'Accepted manual order takes precedence');continue;}
+    if(p.enabled&&this.fireAtWill){this.fireAtWill=false;this.directAutofireSuppressed=true;this.events.add(this.tick,'Fire at will','Disabled','Supervisor autonomy enabled');}
+    this.setAutonomy(p.enabled,p.enabled&&p.fire,p.enabled?(p.fire?'Agent assignments may move and fire':'Agent assignments may move; fire stays manual'):'Pilot disabled autonomy');
    }else{
     if(this.mode==='training'||this.manualCommandTick===this.tick){this.events.add(this.tick,'Fire at will','Rejected',this.mode==='training'?'Unavailable in guided manual practice':'Accepted manual order takes precedence');continue;}
-    const changed=p.mode!==this.preferredPolicy,was=this.fireAtWill;this.preferredPolicy=p.mode;this.fireAtWill=p.enabled;
+    const changed=p.mode!==this.preferredPolicy,was=this.fireAtWill;this.preferredPolicy=p.mode;this.fireAtWill=p.enabled;this.controlEpoch++;
     // OFF revokes every automatic fire source, including Settings applied while FAW was ON.
     this.directAutofireSuppressed=true;
-    if(p.enabled){this.directAutofireSuppressed=true;if(!was||changed)for(const f of this.funnels)this.assignUnit(f,{type:'RECALL'},'auto',++this.automaticRevision);}
+    if(p.enabled){this.directAutofireSuppressed=true;if(this.autonomy.enabled)this.setAutonomy(false,false,'Fire at Will enabled');if(!was||changed)for(const f of this.funnels)this.assignUnit(f,{type:'RECALL'},'auto',++this.automaticRevision);}
     this.events.add(this.tick,'Fire at will',p.enabled?'Enabled':'Disabled',p.enabled?'Policy '+p.mode:'Orders retained; automatic fire stopped');
    }
   }
  }
- private assignUnit(f:Funnel,order:Order,origin:'manual'|'auto',assignment:number){f.order={...order};f.origin=origin;f.assignment=assignment;f.revision=-1;f.blocked=false;this.routeRetry.delete(f.id);this.acquisitionRetry.delete(f.id);}
+ private assignUnit(f:Funnel,order:Order,origin:'manual'|'auto',assignment:number,autonomous=false){f.order={...order};f.origin=origin;f.assignment=assignment;f.autonomous=autonomous;f.revision=-1;f.blocked=false;this.routeRetry.delete(f.id);this.acquisitionRetry.delete(f.id);}
+ /** Pilot-granted supervisor autonomy. OFF by default and in every new round. */
+ readonly autonomy={enabled:false,fire:false};
+ /** Increments on every pilot control change (pilot commands, Recall, autonomy / Fire at Will toggles). Agent decisions based on an older epoch are stale. */
+ controlEpoch=0;
+ private setAutonomy(enabled:boolean,fire:boolean,why:string){
+  const changed=this.autonomy.enabled!==enabled||this.autonomy.fire!==fire;
+  this.autonomy.enabled=enabled;this.autonomy.fire=fire;this.controlEpoch++;
+  if(changed)this.events.add(this.tick,'Autonomy',enabled?'Enabled':'Disabled',why);
+ }
  deployments=0;recalls=0;padisarahHits=0;trainingStep=0;
  lastHit:{id:number;tick:number;target:TargetId;team:'pilot'|'funnel';shooter?:string;assignmentOrigin?:'manual'|'auto';assignment?:number;assignedTarget?:TargetId}|null=null;
  lastImpact:{tick:number;position:Vec2;team:Projectile['team']}|null=null;
  private seen=new Set<string>();private shotId=0;private fireCooldown=0;private recalledAtTick=-1;private hitId=0;private trainingAssignment=0;
+ /** Per-unit Recalls accepted (the group Recall keeps counting in `recalls`). */
+ unitRecalls=0;
+ private unitRecalledAt=new Map<string,number>();
+ /** Tick of the last pilot-input order per unit: agent orders cannot override it within the same tick. */
+ private pilotOrderedAt=new Map<string,number>();
+ /** Bounded, newest-first record of every command outcome, for task tracking and read-only agent views. */
+ readonly commandLog:CommandRecord[]=[];
+ private unitsFor(group:unknown){return group==='funnels'?this.funnels:this.funnels.filter(f=>f.id===group);}
+ private record(value:unknown,outcome:'accepted'|'rejected',reason?:string,units:string[]=[],assignment?:number){
+  const c=(value&&typeof value==='object'&&!Array.isArray(value)?value:{}) as Record<string,unknown>,text=(x:unknown)=>typeof x==='string'?x.slice(0,64):null;
+  const p=c.payload as {type?:unknown;targetId?:unknown;assignments?:unknown}|null|undefined;
+  const order:Order|null=!p||typeof p!=='object'?null:p.type==='RECALL'?{type:'RECALL'}:p.type==='INTERCEPT'&&targetIds.includes(p.targetId as TargetId)?{type:'INTERCEPT',targetId:p.targetId as TargetId}:null;
+  const squad=p&&typeof p==='object'&&p.type==='SQUAD'&&Array.isArray(p.assignments)?p.assignments.slice(0,16).flatMap(a=>a&&typeof a==='object'&&typeof a.unit==='string'&&targetIds.includes(a.targetId)?[{unit:a.unit.slice(0,8),targetId:a.targetId as TargetId}]:[]):undefined;
+  this.commandLog.unshift({commandId:text(c.commandId),tick:this.tick,group:text(c.group),provenance:text(c.provenance),order,squad,outcome,reason,units,assignment});
+  if(this.commandLog.length>64)this.commandLog.length=64;
+ }
  constructor(public readonly runId='run-1',public readonly mode:'combat'|'training'='combat',unitCount=2){
   if(!Number.isSafeInteger(unitCount)||unitCount<1||unitCount>16)throw new Error('Invalid fixture unit count');
-  this.funnels=Array.from({length:unitCount},(_,i)=>{const x=(i-(unitCount-1)/2)*3.6;return {id:'U'+(i+1),order:{type:'RECALL'},origin:'manual',assignment:0,status:'Following',position:{x,y:11},destination:{x,y:11},requested:{x,y:11},cooldown:i*12,path:[],waypoint:0,blocked:false,revision:-1};});
+  this.funnels=Array.from({length:unitCount},(_,i)=>{const x=(i-(unitCount-1)/2)*3.6;return {id:'U'+(i+1),order:{type:'RECALL'},origin:'manual',assignment:0,autonomous:false,status:'Following',position:{x,y:11},destination:{x,y:11},requested:{x,y:11},cooldown:i*12,path:[],waypoint:0,blocked:false,revision:-1};});
   if(mode==='training')this.turrets.forEach(t=>t.armed=false);
  }
  get groupState(){
@@ -101,30 +137,67 @@ export class Simulation {
   '5 / 5 - Let both units reach their resolved follow positions.',
   'Practice complete - deployment, a real unit hit, redirect and return confirmed.'
  ][this.trainingStep];}
- envelope(payload:Order,provenance:CommandEnvelope['provenance'],commandId:string):CommandEnvelope{return {schemaId:'CommandEnvelope.v1',version:1,commandId,runId:this.runId,issuedAtTick:this.tick,expiresAtTick:this.tick+12,group:'funnels',provenance,payload};}
+ envelope(payload:Order,provenance:CommandEnvelope['provenance'],commandId:string,group:CommandGroup='funnels'):CommandEnvelope{return {schemaId:'CommandEnvelope.v1',version:1,commandId,runId:this.runId,issuedAtTick:this.tick,expiresAtTick:this.tick+12,group,provenance,payload};}
  private validate(value:unknown):string|null {
   if(!value||typeof value!=='object'||Array.isArray(value))return 'Invalid command';
   const c=value as CommandEnvelope,keys=Object.keys(c).sort().join(',');
   if(keys!==['schemaId','version','commandId','runId','issuedAtTick','expiresAtTick','group','provenance','payload'].sort().join(','))return 'Invalid envelope fields';
-  if(c.schemaId!=='CommandEnvelope.v1'||c.version!==1||c.group!=='funnels')return 'Unsupported envelope';
+  if(c.schemaId!=='CommandEnvelope.v1'||c.version!==1||(c.group!=='funnels'&&!this.funnels.some(f=>f.id===c.group)))return 'Unsupported envelope';
   if(typeof c.commandId!=='string'||!/^cmd-[0-9]{1,9}$/.test(c.commandId)||c.runId!==this.runId)return 'Invalid command identity';
   if(this.seen.has(c.commandId)||this.seen.size>=4096)return 'Duplicate command or session budget reached';
   if(!Number.isSafeInteger(c.issuedAtTick)||!Number.isSafeInteger(c.expiresAtTick)||c.issuedAtTick<0||c.expiresAtTick<0||c.issuedAtTick>this.tick||c.expiresAtTick<this.tick||c.expiresAtTick-c.issuedAtTick<0||c.expiresAtTick-c.issuedAtTick>12)return 'Expired or invalid timing';
-  const p=c.payload;if(!p||typeof p!=='object'||Array.isArray(p))return 'Invalid payload';
-  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall')?null:'Invalid recall authority';
-  if(p.type!=='INTERCEPT'||Object.keys(p).sort().join(',')!=='targetId,type'||c.provenance!=='local-hand-commit'||!targetIds.includes(p.targetId))return 'Invalid intercept authority or target';
+  const p=c.payload as Order|SquadOrder;if(!p||typeof p!=='object'||Array.isArray(p))return 'Invalid payload';
+  if(c.group!=='funnels'&&this.mode==='training')return 'Per-unit orders unavailable in guided practice';
+  const agent=c.provenance==='local-approved-proposal'||c.provenance==='local-autonomous';
+  if(agent&&this.mode==='training')return 'Agent orders unavailable in guided practice';
+  if(c.provenance==='local-autonomous'&&!this.autonomy.enabled)return 'Autonomy disabled';
+  const affected=p.type==='SQUAD'&&Array.isArray(p.assignments)?p.assignments.map(a=>a?.unit):this.unitsFor(c.group).map(f=>f.id);
+  const pilotHeld=agent?affected.find(u=>this.pilotOrderedAt.get(u)===this.tick):undefined;
+  if(pilotHeld)return this.recalledAtTick===this.tick||this.unitRecalledAt.get(pilotHeld)===this.tick?'Recall takes precedence':'Pilot order takes precedence';
+  // The group (emergency) Recall stays pilot-input only; a per-unit Recall may also come from an agent.
+  if(p.type==='RECALL')return Object.keys(p).length===1&&(c.provenance==='local-keyboard-recall'||c.provenance==='local-hand-recall'||c.provenance==='local-voice-recall'||(c.group!=='funnels'&&agent))?null:'Invalid recall authority';
+  if(p.type==='SQUAD'){
+   // Atomic plan: validated as a whole before anything is assigned.
+   if(c.group!=='funnels'||!agent||Object.keys(p).sort().join(',')!=='assignments,type'||!Array.isArray(p.assignments)||p.assignments.length<1||p.assignments.length>this.funnels.length)return 'Invalid squad plan';
+   const units=new Set<string>();
+   for(const a of p.assignments){
+    if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).sort().join(',')!=='targetId,unit'||!this.funnels.some(f=>f.id===a.unit)||units.has(a.unit)||!targetIds.includes(a.targetId))return 'Invalid squad plan';
+    units.add(a.unit);
+   }
+   if(this.recalledAtTick===this.tick||p.assignments.some(a=>this.unitRecalledAt.get(a.unit)===this.tick))return 'Recall takes precedence';
+   const gone=p.assignments.find(a=>!this.turrets.some(t=>t.id===a.targetId&&t.health>0));
+   return gone?'Target no longer available':null;
+  }
+  if(p.type!=='INTERCEPT'||Object.keys(p).sort().join(',')!=='targetId,type'||(c.provenance!=='local-hand-commit'&&!agent)||!targetIds.includes(p.targetId))return 'Invalid intercept authority or target';
+  // Autonomous agents address single units or a squad plan, never the whole group directly.
+  if(c.provenance==='local-autonomous'&&c.group==='funnels')return 'Invalid intercept authority or target';
   if(this.recalledAtTick===this.tick)return 'Recall takes precedence';
+  if(this.unitsFor(c.group).some(f=>this.unitRecalledAt.get(f.id)===this.tick))return 'Recall takes precedence';
   if(!this.turrets.some(t=>t.id===p.targetId&&t.health>0))return 'Target no longer available';return null;
  }
  accept(value:unknown){
-  const failure=this.validate(value);if(failure){this.rejected++;this.message=`Rejected: ${failure}`;this.events.add(this.tick,'Command','Rejected',failure);return false;}
-  const c=value as CommandEnvelope;this.seen.add(c.commandId);this.accepted++;this.manualCommandTick=this.tick;
-  if(this.fireAtWill){this.fireAtWill=false;this.directAutofireSuppressed=true;this.manualOverrideTick=this.tick;this.fireInputs(this.pilotFire,false);this.events.add(this.tick,'Fire at will','Disabled','Accepted manual group order');}
-  for(const f of this.funnels)this.assignUnit(f,c.payload,'manual',this.accepted);
-  if(c.payload.type==='RECALL'){this.recalls++;this.recalledAtTick=this.tick;this.message='Recall accepted - returning to follow positions';}
-  else{this.deployments++;this.message=`Assignment accepted: ${c.payload.targetId}`;}
-  this.events.add(this.tick,c.payload.type==='RECALL'?'Recall':'Deploy / redirect','Accepted',this.message,c.payload.type==='INTERCEPT'?c.payload.targetId:null);
-  if(this.mode==='training'){
+  const failure=this.validate(value);if(failure){this.rejected++;this.message=`Rejected: ${failure}`;this.events.add(this.tick,'Command','Rejected',failure);this.record(value,'rejected',failure);return false;}
+  const c=value as CommandEnvelope;this.seen.add(c.commandId);this.accepted++;
+  const pilot=(pilotProvenances as readonly string[]).includes(c.provenance),autonomous=c.provenance==='local-autonomous';
+  // Autonomous agent orders never block same-tick pilot toggles; pilot orders always take control back.
+  if(!autonomous)this.manualCommandTick=this.tick;
+  if(pilot){this.controlEpoch++;if(this.autonomy.enabled)this.setAutonomy(false,false,c.payload.type==='RECALL'&&c.group==='funnels'?'Emergency Recall':'Pilot took manual control');}
+  const p=c.payload,squad=p.type==='SQUAD',perUnit=c.group!=='funnels'&&!squad;
+  const plan:[Funnel,Order][]=p.type==='SQUAD'?p.assignments.map(a=>[this.funnels.find(f=>f.id===a.unit)!,{type:'INTERCEPT',targetId:a.targetId}]):this.unitsFor(c.group).map(f=>[f,p]);
+  if(pilot)for(const [f] of plan)this.pilotOrderedAt.set(f.id,this.tick);
+  if(this.fireAtWill){this.fireAtWill=false;this.directAutofireSuppressed=true;this.manualOverrideTick=this.tick;this.fireInputs(this.pilotFire,false);this.events.add(this.tick,'Fire at will','Disabled',squad?'Accepted squad order':perUnit?'Accepted manual unit order':'Accepted manual group order');}
+  for(const [f,order] of plan)this.assignUnit(f,order,'manual',this.accepted,autonomous);
+  const tag=autonomous?' (autonomous)':'';
+  if(p.type==='SQUAD'){this.deployments++;this.message=`Squad assignment accepted: ${p.assignments.map(a=>a.unit+'→'+a.targetId).join(', ')}${tag}`;}
+  else if(p.type==='RECALL'){
+   // Only a pilot-input unit Recall outranks same-tick orders; an agent's unit Recall never blocks the pilot.
+   if(perUnit){this.unitRecalls++;if(pilot)this.unitRecalledAt.set(c.group,this.tick);this.message=`${c.group} recall accepted - returning to follow position${tag}`;}
+   else{this.recalls++;this.recalledAtTick=this.tick;this.message='Recall accepted - returning to follow positions';}
+  }
+  else{this.deployments++;this.message=perUnit?`${c.group} assignment accepted: ${p.targetId}${tag}`:`Assignment accepted: ${p.targetId}`;}
+  this.events.add(this.tick,p.type==='SQUAD'?'Squad deploy':p.type==='RECALL'?(perUnit?'Unit recall':'Recall'):(perUnit?'Unit deploy':'Deploy / redirect'),'Accepted',c.provenance==='local-voice-recall'?`${this.message} · Voice`:this.message,p.type==='INTERCEPT'?p.targetId:null);
+  this.record(value,'accepted',undefined,plan.map(([f])=>f.id),this.accepted);
+  if(this.mode==='training'&&!squad){
    if(this.trainingStep===0&&c.payload.type==='INTERCEPT'&&c.payload.targetId==='T1'){this.trainingStep=1;this.trainingAssignment=this.accepted;}
    else if(this.trainingStep===1){if(c.payload.type==='INTERCEPT'&&c.payload.targetId==='T1')this.trainingAssignment=this.accepted;else this.trainingStep=0;}
    else if(this.trainingStep===2&&c.payload.type==='INTERCEPT'&&c.payload.targetId==='T2')this.trainingStep=3;
@@ -134,9 +207,15 @@ export class Simulation {
   this.planUnits();return true;
  }
  commands(values:unknown[]){
-  const recall=values.find(v=>!!v&&typeof v==='object'&&(v as CommandEnvelope).payload?.type==='RECALL'&&!this.validate(v));
-  if(recall){this.accept(recall);for(const other of values.slice(0,8))if(other!==recall){this.rejected++;this.events.add(this.tick,'Command','Rejected','Recall takes precedence');}return;}
-  for(const value of values.slice(0,8))this.accept(value);
+  // The group Recall is absolute: it wins the whole batch, whatever the queue order.
+  const recall=values.find(v=>!!v&&typeof v==='object'&&(v as CommandEnvelope).payload?.type==='RECALL'&&(v as CommandEnvelope).group==='funnels'&&!this.validate(v));
+  if(recall){this.accept(recall);for(const other of values.slice(0,8))if(other!==recall){this.rejected++;this.events.add(this.tick,'Command','Rejected','Recall takes precedence');this.record(other,'rejected','Recall takes precedence');}return;}
+  // Same-tick order: per-unit Recalls, then pilot input, then approved proposals, then autonomous agent orders.
+  // A pilot order switches autonomy off, so a competing autonomous order in the same tick is rejected.
+  const rank=(v:unknown)=>{const c=(v&&typeof v==='object'?v:{}) as Partial<CommandEnvelope>;
+   return c.provenance==='local-approved-proposal'?2:c.provenance==='local-autonomous'?3:c.payload?.type==='RECALL'&&c.group!=='funnels'?0:1;};
+  const batch=values.slice(0,8).map((v,i)=>({v,i,r:rank(v)})).sort((a,b)=>a.r-b.r||a.i-b.i);
+  for(const {v} of batch)this.accept(v);
  }
  private planUnits(){this.funnels.forEach((f,i)=>this.planUnit(f,i));}
  private planUnit(f:Funnel,index:number){
@@ -217,7 +296,9 @@ export class Simulation {
    const status=this.fireAtWill&&f.order.type==='RECALL'?'Waiting: no reachable eligible target':f.blocked?'Blocked: route / firing position':length(f.position,f.destination)>=.15?'Moving':f.order.type==='INTERCEPT'?'At firing position':'Following';
    if(status!==f.status&&(status.startsWith('Blocked')||f.status.startsWith('Blocked')))this.events.add(this.tick,'Unit route',status,f.id);f.status=status;
    const target=f.order.type==='INTERCEPT'?this.turrets.find(t=>t.id===(f.order as {targetId:TargetId}).targetId&&t.health>0):undefined;
-   if(this.padisarahFire&&target&&!f.blocked&&length(f.position,f.destination)<.15&&clearLine(f.position,target.position,.17)&&f.cooldown<=0&&this.projectiles.length<128){this.shoot(f.position,target.position,'funnel',.4,f);f.cooldown=24;this.padisarahFiring=true;}
+   // Drones fire with pilot permission (Padisarah fire / Fire at Will / autofire), or on their own
+   // autonomous assignment while the pilot's autonomy grant includes fire.
+   if((this.padisarahFire||(this.autonomy.fire&&f.autonomous))&&target&&!f.blocked&&length(f.position,f.destination)<.15&&clearLine(f.position,target.position,.17)&&f.cooldown<=0&&this.projectiles.length<128){this.shoot(f.position,target.position,'funnel',.4,f);f.cooldown=24;this.padisarahFiring=true;}
   });
   if(this.mode==='training'&&this.trainingStep===4&&this.groupState==='Following')this.trainingStep=5;
   if(this.mode==='combat')for(const turret of this.turrets)if(turret.armed&&turret.health>0&&--turret.cooldown<=0){this.shoot(turret.position,this.position,'enemy',.105);turret.cooldown=140;}

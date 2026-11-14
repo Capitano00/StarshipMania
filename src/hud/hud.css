@@ -226,3 +226,10 @@ body.hud-v2 #mission-stats .stats>span:nth-child(3){display:none}
 .hud-tag3d[data-phase=recalled] .hud-tag3d-action{text-decoration:line-through;color:var(--hud-text-2)}
 /* Demo banner is window-pinned so demo mode is obvious from page load. */
 .hud-demo-banner{position:fixed!important;top:8px!important;left:50%!important;transform:translateX(-50%)!important;z-index:2147483000!important;max-width:calc(100vw - 24px)!important}
+
+/* Teammate's Hands / Voice input bar (main #2): a slim status row under the floating mission bar. */
+body.hud-v2 #arena-inputs{position:absolute;z-index:7;top:46px;right:12px;left:auto;display:flex;align-items:center;gap:14px;margin:0;padding:3px 10px;border:1px solid var(--hud-hairline);background:var(--hud-glass-bg);backdrop-filter:blur(10px);font-size:10px;letter-spacing:.4px;color:var(--hud-text-2);clip-path:var(--hud-cut)}
+body.hud-v2 #arena-inputs>div{display:flex;align-items:center;gap:6px}
+body.hud-v2 #arena-inputs strong{font-size:8.5px;letter-spacing:1.3px;text-transform:uppercase;color:var(--hud-text-3)}
+body.hud-v2 #arena-inputs button{font-size:10px;padding:2px 8px;min-height:0}
+body.hud-v2 .hud-left,body.hud-v2 #arena-inspector,body.hud-v2 .hud-rail-toggle{top:80px}

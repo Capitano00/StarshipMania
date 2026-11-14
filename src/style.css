@@ -100,6 +100,12 @@ body:has(#arena:not([hidden])) #app>header,body:has(#arena:not([hidden])) #app>f
 #mission-stats .stats strong{font-size:18px}
 #mission-actions,#mission-actions #arena-actions{position:static;display:flex;gap:6px;margin:0}
 #mission-actions button{min-height:32px;padding:5px 9px;font-size:12px}
+#arena-inputs{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 14px;padding:5px 12px;background:#14232e;border-bottom:1px solid #465064;font-size:12px}
+#arena-inputs>div{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
+#arena-inputs strong{color:#e5ecef}
+#arena-inputs span{color:#aed5cf;overflow-wrap:anywhere}
+#arena-inputs button{min-height:28px;padding:3px 8px;font-size:12px}
+#tracking-line:empty{display:none}
 #arena-workspace{display:grid;grid-template-columns:minmax(0,1fr) 290px;flex:1;min-height:0;overflow:hidden}
 #arena-workspace #arena{height:100%!important;min-height:0!important;width:100%;border:0;border-radius:0}
 #arena-inspector{background:#101e29;border-left:1px solid #465064;padding:10px;overflow-y:auto;min-height:0;min-width:0;font-size:14px;line-height:1.35}
@@ -120,6 +126,11 @@ body:has(#arena:not([hidden])) #app>header,body:has(#arena:not([hidden])) #app>f
 #inspector-aux [role=tablist]{display:flex;gap:4px;margin:6px 0}
 #inspector-aux [role=tab]{flex:1;font-size:12px;padding:6px;min-height:30px}
 #inspector-aux [aria-selected=true]{border-color:#cbb7f4;color:#eee6fc}
+#voice-panel{height:calc(100% - 42px);min-height:0;display:flex;flex-direction:column;gap:4px}
+#voice-result{margin:0;color:#aed5cf;font-size:12px}
+#voice-transcript{margin:0;padding:0 4px 0 0;list-style:none;min-height:0;overflow:auto;overflow-wrap:anywhere}
+#voice-transcript li{padding:4px 0;border-bottom:1px solid #30424f}
+#voice-transcript strong{display:block;color:#cbb7f4;font-size:11px}
 #arena-inspector #command-log h3{display:none}
 #arena-inspector #log-scroll{max-height:216px}
 #arena-inspector #input-details{margin:0;font-size:12px}
@@ -130,6 +141,11 @@ body:has(#arena:not([hidden])) #app>header,body:has(#arena:not([hidden])) #app>f
 #session-settings{max-height:calc(100dvh - 24px);overflow:auto}
 .binding-row{grid-template-columns:minmax(100px,1fr) minmax(120px,1.5fr) minmax(80px,1fr)}
 @media(max-width:700px){
+ #mission-actions,#mission-actions #arena-actions{flex-wrap:wrap}
+ #arena-inputs{padding-inline:6px}
+ #inspector-aux [role=tablist]{flex-wrap:wrap}
+ #voice-panel{height:auto;min-height:70px;max-height:100%;overflow:auto}
+ #voice-transcript{max-height:95px}
  #mission-bar{min-height:38px;padding:3px 6px;gap:5px}
  #mission-stats .stats{gap:7px;font-size:12px}
  #mission-stats .stats strong{font-size:14px}

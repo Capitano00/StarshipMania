@@ -2,7 +2,9 @@
 export interface PerformanceRun {
   id?:string;date:string;label:string;environment:string;
   load:{ttfbMs:number;domContentLoadedMs:number;loadMs:number;initialTransferKB:number;initialJsGzipKB:number};
-  scenarios:{name:string;seconds:number;fps:number;p50Ms:number;p99Ms:number;maxMs:number;slowFrames:number;longTasks:number}[];
+  scenarios:{name:string;seconds:number;fps:number;p50Ms:number;p99Ms:number;maxMs:number;slowFrames:number;longTasks:number;
+    /** For combat scenarios: seconds until the arena was cleared in this live run. */
+    clearSeconds?:number}[];
   longAnimationFrames:{when:string;ms:number}[];
   heap:{startMB:number;peakMB:number;settledMB:number|null};
 }

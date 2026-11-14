@@ -45,11 +45,13 @@ export interface RoundStats {
   /** Hits ÷ shots for pilot and drones together, 0–100. */
   accuracy:number;
   ordersAccepted:number;ordersRejected:number;
+  /** Drone orders the pilot had to give by gesture, and orders the supervisor agent gave instead. */
+  pilotCommands:number;agentCommands:number;
   score:number;
 }
 
 /** Round score out of 1000: 300 for targets, 300 for speed (wins only), 200 for health kept, 200 for accuracy. */
-export function roundScore(s:Omit<RoundStats,'score'>){
+export function roundScore(s:Pick<RoundStats,'outcome'|'seconds'|'targetsCleared'|'healthLeft'|'accuracy'>){
   const targets=300*s.targetsCleared/6;
   const speed=s.outcome==='won'?300*Math.max(0,1-s.seconds/ROUND_LIMIT_SECONDS):0;
   const health=200*s.healthLeft/100;
@@ -64,12 +66,13 @@ export function playRound(controller:Controller):RoundStats{
   const latencyTicks=Math.round(controller.commandLatencyMs/1000*TICKS_PER_SECOND);
   const pending:{dueTick:number;order:Order}[]=[];
   const seen=new Set<number>();
-  let commandId=0,pilotShots=0,pilotHits=0,droneShots=0,droneHits=0,lastHealth=100;
+  let commandId=0,pilotCommands=0,agentCommands=0,pilotShots=0,pilotHits=0,droneShots=0,droneHits=0,lastHealth=100;
   let turretHealth=sim.turrets.reduce((sum,t)=>sum+t.health,0),lastDroneHits=0;
   const limit=ROUND_LIMIT_SECONDS*TICKS_PER_SECOND;
   while(sim.outcome==='playing'&&sim.tick<limit){
     const decision=controller.decide({sim,tick:sim.tick});
     for(const order of decision.orders??[])pending.push({dueTick:sim.tick+latencyTicks,order});
+    pilotCommands+=decision.orders?.length??0;agentCommands+=decision.commands?.length??0;
     // Envelopes expire 12 ticks after issue, so stamp each one when it arrives, not when it was decided.
     const due=pending.filter(p=>p.dueTick<=sim.tick);
     for(const p of due)pending.splice(pending.indexOf(p),1);
@@ -91,7 +94,7 @@ export function playRound(controller:Controller):RoundStats{
     healthLeft:lastHealth,damageTaken:100-lastHealth,
     pilotShots,pilotHits,droneShots,droneHits,
     accuracy:shots?round1((pilotHits+droneHits)/shots*100):0,
-    ordersAccepted:sim.accepted,ordersRejected:sim.rejected,
+    ordersAccepted:sim.accepted,ordersRejected:sim.rejected,pilotCommands,agentCommands,
   };
   return {...stats,score:roundScore(stats)};
 }
@@ -193,6 +196,12 @@ export function runSupervisorBenchmark(){
   const agent=supervisorAgent('Supervisor agent drones only',false);
   const round=playRound(agent);
   return {decisionMs:SUPERVISOR_DECISION_MS,seconds:round.seconds,outcome:round.outcome,...agent.report()};
+}
+
+/** How the supervisor's re-planning interval (a model's decision speed) changes time to clear, alone and with the pilot. */
+export const AGENT_SPEEDS_MS=[100,250,500,750,1000,1500,2000];
+export function agentSpeedSweep(){
+  return AGENT_SPEEDS_MS.map(decisionMs=>({decisionMs,dronesOnly:playRound(supervisorAgent('sweep',false,decisionMs)).seconds,withPilot:playRound(supervisorAgent('sweep',true,decisionMs)).seconds}));
 }
 
 /**

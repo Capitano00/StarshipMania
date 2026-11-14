@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {GESTURE_LATENCY_MS,ROUND_LIMIT_SECONDS,baselineControllers,droneCommander,latencySweep,playRound,roundScore,runGameplayBenchmark,runSupervisorBenchmark,supervisorAgent} from '../src/bench/gameplay';
+import {GESTURE_LATENCY_MS,ROUND_LIMIT_SECONDS,baselineControllers,droneCommander,latencySweep,playRound,roundScore,runGameplayBenchmark,runSupervisorBenchmark,supervisorAgent,agentSpeedSweep} from '../src/bench/gameplay';
 import {evaluateVoice,phrases} from '../src/bench/voice-eval';
 import {gameplayRows,type Snapshot} from '../src/metrics-compare';
 import type {VoiceIntent} from '../src/voice';
@@ -34,6 +34,18 @@ describe('supervisor agent benchmark',{timeout:30_000},()=>{
     expect(report).toEqual(runSupervisorBenchmark());
     expect(report.outcome).toBe('won');expect(report.stale).toBe(0);expect(report.tasksFailed).toBe(0);
     expect(report.succeeded).toBeGreaterThan(report.toolCalls/2);expect(report.tasksCompleted).toBeGreaterThan(0);
+  });
+  it('measures pilot workload: gestures need pilot commands, the agent needs none',()=>{
+    const rounds=runGameplayBenchmark(),by=(name:string)=>rounds.find(r=>r.scenario===name)!;
+    expect(by('Pilot + gesture-deployed drones').pilotCommands).toBeGreaterThan(0);
+    expect(by('Pilot + supervisor agent')).toMatchObject({pilotCommands:0});
+    expect(by('Pilot + supervisor agent').agentCommands).toBeGreaterThan(0);
+  });
+  it('reports how the agent re-planning speed changes time to clear',()=>{
+    const sweep=agentSpeedSweep();
+    expect(sweep.map(p=>p.decisionMs)).toEqual([...sweep.map(p=>p.decisionMs)].sort((a,b)=>a-b));
+    expect(sweep[0].withPilot).toBeLessThanOrEqual(sweep.at(-1)!.withPilot);
+    expect(sweep[0].dronesOnly).toBeLessThanOrEqual(sweep.at(-1)!.dronesOnly);
   });
   it('commands drones only through tools: its orders are accepted as autonomous, never as pilot input',()=>{
     const agent=supervisorAgent('probe',false);const round=playRound(agent);

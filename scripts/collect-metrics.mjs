@@ -60,7 +60,7 @@ if(bundleRun.ok){
   try{
     const module=await import(`${pathToFileURL(benchFile).href}?t=${Date.now()}`);
     const started=performance.now();
-    bench={ok:true,gameplay:module.runGameplayBenchmark(),supervisor:module.runSupervisorBenchmark(),latencySweep:module.latencySweep(),voice:module.evaluateVoice(),
+    bench={ok:true,gameplay:module.runGameplayBenchmark(),supervisor:module.runSupervisorBenchmark(),agentSpeed:module.agentSpeedSweep(),latencySweep:module.latencySweep(),voice:module.evaluateVoice(),
       gestureLatencyMs:module.GESTURE_LATENCY_MS,roundLimitSeconds:module.ROUND_LIMIT_SECONDS,seconds:+((performance.now()-started)/1000).toFixed(2)};
   }catch(error){bench={ok:false,error:String(error?.message??error)};}
 }
@@ -80,7 +80,7 @@ if(snapshotId!==undefined){
     bundle:{firstLoadGzipBytes:gzip(a=>a.pages.includes('game')),laterGzipBytes:gzip(a=>a.pages.length===0)},
     tests:{passed:tests.totals.passed,failed:tests.totals.failed,newFailures:tests.baseline.newFailures.length,todo:tests.totals.todo},
     code:{appLines:code.app.lines,testLines:code.tests.lines},
-    ...(bench.ok?{gameplay:bench.gameplay.map(({scenario,commandLatencyMs,outcome,seconds,targetsCleared,healthLeft,accuracy,score,ordersAccepted})=>({scenario,commandLatencyMs,outcome,seconds,targetsCleared,healthLeft,accuracy,score,ordersAccepted})),
+    ...(bench.ok?{gameplay:bench.gameplay.map(({scenario,commandLatencyMs,outcome,seconds,targetsCleared,healthLeft,accuracy,score,ordersAccepted,pilotCommands,agentCommands})=>({scenario,commandLatencyMs,outcome,seconds,targetsCleared,healthLeft,accuracy,score,ordersAccepted,pilotCommands,agentCommands})),
       latencySweep:bench.latencySweep,supervisor:bench.supervisor,voice:(({byKind,phrases,accuracy,correct,wrongOrders,missed,falseTriggers})=>({phrases,accuracy,correct,wrongOrders,missed,falseTriggers,byKind}))(bench.voice)}:{})};
   mkdirSync(at('metrics','snapshots'),{recursive:true});
   writeFileSync(at('metrics','snapshots',`${snapshotId}.json`),JSON.stringify(snapshot,null,1)+'\n');

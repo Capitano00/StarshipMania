@@ -37,6 +37,22 @@ body:has(.metrics){background:#09131c}
 .hero-body small{font-size:13px;color:var(--muted)}
 .hero-detail{font-size:11.5px;color:var(--muted)}
 
+/* AI advantage: without → with the agent */
+.adv-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}
+.adv-kpi{background:#0f1f2a;border:1px solid var(--line);border-top:3px solid var(--after);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.adv-label{font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:#90b3bd}
+.adv-values{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.adv-before{font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums;text-decoration:line-through;text-decoration-color:#5d7d89}
+.adv-arrow{color:var(--muted)}
+.adv-values strong{font-size:34px;font-weight:620;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.adv-change{font-size:11.5px;font-weight:600;border-radius:999px;padding:3px 9px;align-self:flex-start}
+.adv-change.good{color:#10282b;background:var(--good)}.adv-change.bad{color:#2a1410;background:var(--bad)}
+.adv-charts{margin-top:14px}
+.adv-ai .bar-name{color:var(--ink);font-weight:600}
+.adv-honest{border-left:3px solid var(--known);padding:8px 12px;background:#0f1f2a;border-radius:0 8px 8px 0}
+.adv-honest b{color:var(--ink)}
+.sweep .ref.rules{stroke:var(--known)}
+
 /* Ring gauge */
 .ring-track{fill:none;stroke:var(--track);stroke-width:8}
 .ring-value{fill:none;stroke:var(--after);stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset 1.4s cubic-bezier(.2,.8,.2,1)}

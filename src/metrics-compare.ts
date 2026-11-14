@@ -17,7 +17,7 @@ export interface Snapshot {
   supervisor?:SupervisorSummary;
 }
 export interface SupervisorSummary {decisionMs:number;seconds:number;toolCalls:number;succeeded:number;stale:number;invalid:number;tasksCompleted:number;tasksFailed:number}
-export interface GameplayResult {scenario:string;commandLatencyMs:number;outcome:string;seconds:number;targetsCleared:number;healthLeft:number;accuracy:number;score:number;ordersAccepted:number}
+export interface GameplayResult {scenario:string;commandLatencyMs:number;outcome:string;seconds:number;targetsCleared:number;healthLeft:number;accuracy:number;score:number;ordersAccepted:number;pilotCommands?:number;agentCommands?:number}
 export interface VoiceSummary {phrases:number;accuracy:number;correct:number;wrongOrders:number;missed:number;falseTriggers:number;byKind:{kind:string;phrases:number;correct:number}[]}
 export type Better='higher'|'lower'|null;
 /** A number only the feature owner can measure, such as voice accuracy or a model's win rate.

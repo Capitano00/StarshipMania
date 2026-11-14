@@ -14,8 +14,10 @@ import type {TargetId} from '../contracts';
 import {hudFeed as defaultFeed, type HudFeed} from './feed';
 import {droneCards, formatTime, objectives, toHudEvent, toastWorthy} from './model';
 import type {DroneHud, HudSeverity, ObjectiveHud} from './contract';
+import {mountAgentVoice} from './agent-voice';
+import type {Camera} from 'three';
 
-export type HudFrame = {sim: Simulation; preview: TargetId | null; aimed: TargetId | null};
+export type HudFrame = {sim: Simulation; preview: TargetId | null; aimed: TargetId | null; camera?: Camera};
 export type HudHandle = {update(frame: HudFrame): void; dispose(): void};
 
 type Toast = {node: HTMLElement; born: number};
@@ -96,6 +98,7 @@ export function mountHud(feed: HudFeed = defaultFeed): HudHandle | null {
   const root = h('div', 'hud-root'); root.id = 'hud-root';
   root.append(left, toastBox, strip, toggle);
   arena.append(root);
+  const agentVoice = mountAgentVoice(root, feed, (severity, title, detail) => toast(severity, title, detail, performance.now()));
 
   // ----- Camera preview: compact, draggable picture-in-picture (tracking reads the hidden <video>, not this canvas) -----
   const preview = arena.querySelector<HTMLElement>('.tracking-preview') ?? document.querySelector<HTMLElement>('.tracking-preview');
@@ -210,7 +213,7 @@ export function mountHud(feed: HudFeed = defaultFeed): HudHandle | null {
   }
 
   return {
-    update({sim, preview}: HudFrame) {
+    update({sim, preview, camera}: HudFrame) {
       const now = performance.now();
       if (sim.runId !== run) {
         run = sim.runId; lastEvent = sim.events.entries[0]?.id ?? 0;
@@ -223,10 +226,11 @@ export function mountHud(feed: HudFeed = defaultFeed): HudHandle | null {
       const fresh = sim.events.entries.filter(e => e.id > lastEvent);
       if (fresh.length) lastEvent = fresh[0].id;
       for (const e of fresh.reverse()) if (toastWorthy(e)) { const ev = toHudEvent(e); toast(ev.severity, ev.title, `${e.outcome} · ${formatTime(e.tick)}`, now); }
+      agentVoice.update({sim, camera});
       for (let i = toasts.length - 1; i >= 0; i--) if (now - toasts[i].born > TOAST_MS) { toasts[i].node.remove(); toasts.splice(i, 1); }
     },
     dispose() {
-      root.remove(); agent.remove(); ring.remove();
+      agentVoice.dispose(); root.remove(); agent.remove(); ring.remove();
       handle?.removeEventListener('pointerdown', onDown); handle?.removeEventListener('pointermove', onMove); handle?.removeEventListener('pointerup', onUp);
       document.body.classList.remove('hud-v2', 'hud-rail-collapsed');
     },

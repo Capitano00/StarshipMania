@@ -7,6 +7,7 @@ import './style.css';
 import {ArenaFx} from './fx/arena-fx';
 import {mountHud,type HudHandle} from './hud/hud';
 import {hudFeed} from './hud/feed';
+import {demoRequested,startHudDemo} from './hud/demo';
 const hudClassic=new URLSearchParams(location.search).has('classic');let fx:ArenaFx|null=null,hud:HudHandle|null=null;
 import {checkWebcamAssets} from './webcam-assets';
 import {gestureCatalogue} from './gesture-guide';
@@ -240,7 +241,7 @@ function loop(now:number){
   const unitText=!controls.inputArmed?'Blocked: paused / fresh open-hand recovery required':!sim.fireAtWill&&!(session.autofire&&!sim.directAutofireSuppressed)&&!unitPose?`Blocked: ${unitHand} hand gesture uncertain`:stage==='arena'?sim.fireState:out.frame.padisarahFire?'Fire input held (practice only)':'Holding fire';
   for(const id of ['unit-fire-status','camera-unit-fire','practice-unit-fire'])el(id).textContent=`Padisarah: ${unitText}${sim.fireAtWill?' | FAW '+sim.preferredPolicy+' / AUTO FIRE ON':session.autofire&&!sim.directAutofireSuppressed?' | DIRECT AUTO FIRE ON':' | manual'}${stage==='controls'?' | '+actionLabel('padisarahFire'):''}`;
   renderLog();renderAbilities();
-  if(stage==='arena'&&view&&renderState!=='lost'){fx?.update(sim,controls.preview,aim.target);view.draw(sim,controls.preview,aim.point,aim.target);hud?.update({sim,preview:controls.preview,aimed:aim.target});}
+  if(stage==='arena'&&view&&renderState!=='lost'){fx?.update(sim,controls.preview,aim.target,hudFeed.targetMarks());view.draw(sim,controls.preview,aim.point,aim.target);hud?.update({sim,preview:controls.preview,aimed:aim.target,camera:view.camera});}
   el('tracking-preview').hidden=source!=='camera';el('toggle-camera-preview').hidden=stage!=='arena'||settingsOpen;el('toggle-camera-preview').textContent=showCameraDuringPlay?'Hide camera preview':'Show camera preview';
   trackingPreview.render(video,now,controls.epoch,source==='camera'&&camera.active&&!document.hidden,source==='camera'&&camera.loading&&!document.hidden,out.frame.fire&&!blocked,session.bindings.pilotFire.hand);
   for(const [side,id]of [['Left','left-dot'],['Right','right-dot']]as const){const hand=controls.latest?.hands.find(h=>h.side===side);const dot=el(id);dot.style.opacity=hand?'1':'.2';if(hand){const center=controls.neutral?.[side==='Left'?'left':'right']??{x:side==='Left'?.3:.7,y:.5};dot.style.left=`${clamp(50+(hand.palm.x-center.x)*300,5,95)}%`;dot.style.top=`${clamp(50+(hand.palm.y-center.y)*300,10,90)}%`;}}
@@ -385,6 +386,7 @@ if(qaEnabled){el('probe').hidden=false;el('probe').onclick=async()=>{const resul
 
 inspector=installInspector(()=>view?.resize(),()=>openSettings());
 hud=hudClassic?null:mountHud();if(hud&&qaEnabled)Object.assign(globalThis,{__hudFeed:hudFeed});
+if(hud&&demoRequested())startHudDemo(hudFeed,el('arena')); // developer-only, simulated events, opt-in via ?hud-demo
 const mechPanel=document.createElement('section');mechPanel.id='mech-panel';el('weapon-status').before(mechPanel);mechPanel.append(el('weapon-status'));const booster=document.createElement('div');booster.innerHTML='<output id="booster-status">Booster ready</output><div class="ability-buttons"><button id="short-dash">Short / Shift</button><button id="long-dash">Long / Q</button></div>';mechPanel.append(booster);
 const policyPanel=document.createElement('div');policyPanel.className='ability-buttons';policyPanel.innerHTML='<button id="fire-at-will" aria-pressed="false">FAW OFF / F</button><select id="faw-mode" aria-label="Fire at will policy"><option value="A">A / Mech nearest</option><option value="B">B / Each unit nearest</option><option disabled>C / Priority (planned)</option></select>';el('padisarah-panel').append(policyPanel);
 el('short-dash').onclick=()=>queueAction('shortDash','local-button');el('long-dash').onclick=()=>queueAction('longDash','local-button');el('fire-at-will').onclick=()=>queueAction('fireAtWill','local-button');el<HTMLSelectElement>('faw-mode').onchange=()=>{if(!gameplayActive())return;preferredPolicy=el<HTMLSelectElement>('faw-mode').value as DronePolicy;queuedPolicy=preferredPolicy;};

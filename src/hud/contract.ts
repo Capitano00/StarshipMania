@@ -42,10 +42,40 @@ export interface SuggestionHud {
   status: SuggestionStatus;
 }
 
-export type VoiceStatus = 'unavailable' | 'idle' | 'listening' | 'transcribing' | 'responding' | 'error';
-export interface VoiceHud { status: VoiceStatus; partial?: string; final?: string; reply?: string }
+export type VoiceStatus = 'unavailable' | 'idle' | 'listening' | 'transcribing' | 'processing' | 'responding' | 'error';
+export interface VoiceHud { status: VoiceStatus; partial?: string; final?: string; reply?: string; message?: string }
 
 export type LinkState = 'offline' | 'live';
 
 export type HudSeverity = 'info' | 'success' | 'warn' | 'critical';
 export interface HudEvent { id: string; tick: number; source: 'pilot' | 'agent' | 'voice' | 'system'; title: string; detail: string; severity: HudSeverity }
+
+/** What an autonomous drone agent reports it is doing. Matches Figma DroneTag "Phase" variants. */
+export type AgentPhase = 'idle' | 'planning' | 'proposing' | 'executing' | 'completed' | 'failed' | 'recalled';
+export interface DroneAgentHud {
+  droneId: string;
+  phase: AgentPhase;
+  /** Short action text from the agent, e.g. "Intercept T4". */
+  action?: string;
+  /** Concise reason supplied by the agent. The HUD never generates reasoning. */
+  reason?: string;
+  targetId?: TargetId;
+  /** performance.now() when this phase was published. */
+  at: number;
+}
+
+/**
+ * Provider-neutral events for voice and agent integrations: `hudFeed.publish(event)`.
+ * No ElevenLabs (or other provider) types appear here.
+ */
+export type HudInputEvent =
+  | {type: 'voice.status'; status: VoiceStatus; message?: string}
+  | {type: 'voice.transcript'; text: string; final: boolean}
+  | {type: 'voice.response'; text: string}
+  | {type: 'agent.link'; state: LinkState}
+  | {type: 'agent.phase'; droneId: string; phase: AgentPhase; action?: string; reason?: string; targetId?: TargetId}
+  | {type: 'agent.suggestion'; suggestion: SuggestionHud | null}
+  | {type: 'agent.clear'; droneId?: string};
+
+/** Target highlight requested by agent state, consumed by the 3D effects layer. */
+export interface AgentTargetMark { targetId: TargetId; phase: 'proposing' | 'executing'; droneId: string; since: number }

@@ -68,7 +68,9 @@ void main(){
 }`;
 
 type Burst = {mesh: THREE.Mesh; flash: THREE.Sprite; age: number; life: number; grow: number; strength: number};
-type TurretMark = {group: THREE.Group; brackets: THREE.Mesh[]; health: THREE.Mesh; healthStep: number; material: THREE.MeshBasicMaterial; healthMaterial: THREE.MeshBasicMaterial};
+type TurretMark = {group: THREE.Group; brackets: THREE.Mesh[]; health: THREE.Mesh; healthStep: number; material: THREE.MeshBasicMaterial; healthMaterial: THREE.MeshBasicMaterial; beacon: THREE.Mesh; beaconMaterial: THREE.MeshBasicMaterial};
+/** Agent-requested highlight (structurally identical to the HUD contract's AgentTargetMark). */
+export type FxAgentMark = {targetId: TargetId; phase: 'proposing' | 'executing'; droneId: string; since: number};
 type DroneFx = {halo: THREE.Sprite; core: THREE.Sprite; light: THREE.PointLight; trail: THREE.Sprite[]; history: THREE.Vector3[]; last: THREE.Vector3 | null; tether: THREE.Line; packets: THREE.Sprite[]};
 type ShotFx = {sprites: THREE.Sprite[]};
 
@@ -90,6 +92,7 @@ export class ArenaFx {
   private run = '';
   private lastHit = 0;
   private lastEvent = 0;
+  private accepted = new Set<string>();
   private health = new Map<TargetId, number>();
   private frame = 0;
   private restore: {toneMapping: THREE.ToneMapping; exposure: number; background: THREE.Scene['background']; fog: THREE.Scene['fog']};
@@ -167,8 +170,11 @@ export class ArenaFx {
     const group = new THREE.Group(), material = flatAdditive(fxPalette.enemy, .8), healthMaterial = flatAdditive(fxPalette.enemy, .55);
     const brackets = [0, 1, 2, 3].map(i => { const m = new THREE.Mesh(new THREE.RingGeometry(1.9, 2.05, 12, 1, i * Math.PI / 2 + Math.PI / 12, Math.PI / 3), material); m.rotation.x = -Math.PI / 2; group.add(m); return m; });
     const health = new THREE.Mesh(new THREE.RingGeometry(1.45, 1.55, 48, 1, Math.PI / 2, Math.PI * 2), healthMaterial); health.rotation.x = -Math.PI / 2; group.add(health);
+    const beaconMaterial = flatAdditive(fxPalette.preview, 0);
+    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(.09, .55, 7, 16, 1, true), beaconMaterial);
+    beacon.position.y = 3.5; beacon.visible = false; group.add(beacon);
     group.position.y = .07; group.name = 'fx-target-' + id;
-    mark = {group, brackets, health, healthStep: 20, material, healthMaterial};
+    mark = {group, brackets, health, healthStep: 20, material, healthMaterial, beacon, beaconMaterial};
     this.root.add(group); this.turrets.set(id, mark);
     return mark;
   }
@@ -195,7 +201,7 @@ export class ArenaFx {
   }
 
   /** Call once per rendered frame, before ArenaView.draw, with read-only simulation state. */
-  update(sim: Simulation, preview: TargetId | null = null, aimed: TargetId | null = null) {
+  update(sim: Simulation, preview: TargetId | null = null, aimed: TargetId | null = null, agentMarks: readonly FxAgentMark[] = []) {
     this.frame++;
     const t = this.frame / 60;
     if (sim.runId !== this.run) {
@@ -255,12 +261,19 @@ export class ArenaFx {
       mark.group.visible = alive;
       if (!alive) continue;
       toWorld(tu.position, .07, mark.group.position);
-      const isPreview = preview === tu.id, isAssigned = assigned.has(tu.id), isAimed = aimed === tu.id;
+      const agent = agentMarks.find(m => m.targetId === tu.id && m.phase === 'executing') ?? agentMarks.find(m => m.targetId === tu.id);
+      if (agent?.phase === 'executing') {
+        const key = `${agent.droneId}|${agent.targetId}|${agent.since}`;
+        if (!this.accepted.has(key)) { this.accepted.add(key); this.burst(toWorld(tu.position), fxPalette.drone, 1.6, 34); }
+      }
+      const isPreview = preview === tu.id || agent?.phase === 'proposing', isAssigned = assigned.has(tu.id) || agent?.phase === 'executing', isAimed = aimed === tu.id;
       const color = isPreview ? fxPalette.preview : isAssigned ? fxPalette.drone : tu.armed ? fxPalette.enemy : fxPalette.pilot;
       mark.material.color.setHex(color); mark.healthMaterial.color.setHex(color);
       mark.material.opacity = isPreview || isAssigned ? .95 : isAimed ? .8 : .45;
       mark.group.rotation.y = t * (isPreview ? 1.6 : isAssigned ? .9 : .35);
       mark.group.scale.setScalar(isPreview ? 1.12 + Math.sin(t * 8) * .04 : isAimed ? 1.05 : 1);
+      mark.beacon.visible = !!agent;
+      if (agent) { mark.beaconMaterial.color.setHex(agent.phase === 'proposing' ? fxPalette.preview : fxPalette.drone); mark.beaconMaterial.opacity = agent.phase === 'proposing' ? .16 + Math.sin(t * 6) * .08 : .26; }
       const step = Math.max(1, Math.round(tu.health / 5));
       if (step !== mark.healthStep) {
         mark.healthStep = step; mark.health.geometry.dispose();

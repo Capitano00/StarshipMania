@@ -159,3 +159,68 @@ body.hud-v2 #arena-workspace #pause-overlay,body.hud-v2 #arena-workspace #result
 @media (max-width:700px){body.hud-v2 #arena-inspector{width:min(292px,calc(100% - 24px));max-height:45%}.hud-gesture,.hud-rail-toggle{display:none}}
 /* The squad rail now reports the unit group; keep the bar to hull + targets. */
 body.hud-v2 #mission-stats .stats>span:nth-child(3){display:none}
+
+/* ===================== Agent & Voice (Figma page "Agent & Voice") ===================== */
+:root{--hud-voice:#6EF0A0}
+/* The voice panel now owns transcripts; the rail keeps only the link chip. */
+.hud-agent .hud-transcript{display:none!important}
+
+/* ---------- VoicePanel ---------- */
+.hud-voice{--c:var(--hud-text-3);position:absolute;z-index:3;left:50%;bottom:54px;transform:translateX(-50%);width:min(380px,calc(100% - 620px));min-width:280px;display:flex;flex-direction:column;gap:6px;padding:9px 12px;background:rgba(11,23,34,.88);border:1px solid color-mix(in srgb,var(--c) 80%,transparent);backdrop-filter:blur(14px);clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));animation:hud-in .2s ease-out}
+.hud-voice[data-state=listening],.hud-voice[data-state=transcribing]{--c:var(--hud-voice);box-shadow:inset 0 0 26px rgba(110,240,160,.12)}
+.hud-voice[data-state=processing]{--c:var(--hud-drone)}
+.hud-voice[data-state=responding]{--c:var(--hud-pilot)}
+.hud-voice[data-state=error]{--c:var(--hud-critical)}
+.hud-voice[data-state=idle]{--c:var(--hud-text-3);width:auto;min-width:0;padding:5px 10px}
+.hud-voice-head{display:flex;align-items:center;gap:9px}
+.hud-mic{position:relative;flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;color:var(--c);border:1.5px solid var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}
+.hud-voice[data-state=listening] .hud-mic,.hud-voice[data-state=transcribing] .hud-mic{box-shadow:0 0 12px var(--c)}
+.hud-voice[data-state=listening] .hud-mic::before,.hud-voice[data-state=listening] .hud-mic::after,.hud-voice[data-state=transcribing] .hud-mic::before{content:'';position:absolute;inset:-2px;border-radius:50%;border:1.5px solid var(--c);animation:hud-ring 1.6s ease-out infinite}
+.hud-voice[data-state=listening] .hud-mic::after{animation-delay:.8s}
+.hud-voice-label{flex:1;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--c)}
+.hud-voice-level{display:none;align-items:center;gap:2px;height:14px}
+.hud-voice-level i{width:3px;height:100%;background:var(--c);border-radius:1px;animation:hud-level .9s ease-in-out infinite}
+.hud-voice-level i:nth-child(2){animation-delay:.15s}.hud-voice-level i:nth-child(3){animation-delay:.3s}.hud-voice-level i:nth-child(4){animation-delay:.45s}.hud-voice-level i:nth-child(5){animation-delay:.6s}
+.hud-voice[data-state=listening] .hud-voice-level,.hud-voice[data-state=transcribing] .hud-voice-level{display:flex}
+.hud-voice-dots{display:none;font-family:var(--hud-mono);color:var(--c);letter-spacing:2px;animation:hud-pulse 1s ease-in-out infinite}
+.hud-voice[data-state=processing] .hud-voice-dots{display:inline}
+.hud-voice-heard{margin:0;font-size:13.5px;font-weight:500;line-height:1.35;color:var(--hud-text)}
+.hud-voice-heard[data-partial=true]{color:var(--hud-text-2)}
+.hud-voice-reply{margin:0;padding-left:8px;border-left:2px solid var(--c);font-size:11.5px;line-height:1.4;color:var(--hud-text-2)}
+.hud-voice[data-state=error] .hud-voice-reply{color:var(--hud-critical)}
+
+/* ---------- DroneTag (projected above each drone) ---------- */
+.hud-tags{position:absolute;inset:0;z-index:0;overflow:hidden}
+.hud-tag3d{--c:var(--hud-text-2);position:absolute;left:0;top:0;width:0;height:0;will-change:transform}
+.hud-tag3d-box{position:absolute;left:0;bottom:calc(16px + var(--lift,0px));transform:translateX(-50%);display:flex;flex-direction:column;gap:1px;padding:4px 8px;white-space:nowrap;max-width:240px;background:rgba(11,23,34,.86);border:1px solid color-mix(in srgb,var(--c) 85%,transparent);border-radius:var(--hud-r1);backdrop-filter:blur(8px)}
+.hud-tag3d-stem{position:absolute;left:0;bottom:2px;width:1px;height:calc(14px + var(--lift,0px));background:var(--c);opacity:.8}
+.hud-tag3d-stem::after{content:'';position:absolute;left:-2px;bottom:-3px;width:5px;height:5px;border-radius:50%;background:var(--c)}
+.hud-tag3d-row{display:flex;align-items:center;gap:6px}
+.hud-tag3d-row b{font-family:var(--hud-mono);font-size:11px;font-weight:500;color:var(--hud-text)}
+.hud-tag3d-row i{width:6px;height:6px;border-radius:50%;background:var(--c);box-shadow:0 0 6px var(--c)}
+.hud-tag3d-phase{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--c)}
+.hud-tag3d-action{font-size:10.5px;font-weight:500;color:var(--hud-text)}
+.hud-tag3d-reason{font-size:9.5px;color:var(--hud-text-2);white-space:normal;max-width:220px}
+.hud-tag3d[data-phase=idle]{--c:var(--hud-pilot);opacity:.78}
+.hud-tag3d[data-phase=idle] .hud-tag3d-box{padding:2px 6px}
+.hud-tag3d[data-phase=planning]{--c:var(--hud-drone)}
+.hud-tag3d[data-phase=planning] .hud-tag3d-row i{animation:hud-pulse .8s ease-in-out infinite}
+.hud-tag3d[data-phase=proposing]{--c:var(--hud-preview)}
+.hud-tag3d[data-phase=proposing] .hud-tag3d-box,.hud-tag3d[data-phase=executing] .hud-tag3d-box{box-shadow:0 0 16px color-mix(in srgb,var(--c) 40%,transparent)}
+.hud-tag3d[data-phase=executing]{--c:var(--hud-drone)}
+.hud-tag3d[data-phase=completed]{--c:var(--hud-pilot)}
+.hud-tag3d[data-phase=failed]{--c:var(--hud-enemy)}
+.hud-tag3d[data-phase=recalled]{--c:var(--hud-critical)}
+.hud-tag3d-flash .hud-tag3d-box{animation:hud-tagflash .6s ease-out}
+
+/* ---------- Developer demo banner ---------- */
+.hud-demo-banner{position:absolute;z-index:9;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;padding:4px 12px;font-size:10px;color:var(--hud-text-2);background:rgba(7,14,22,.9);border:1px dashed var(--hud-preview);pointer-events:none;white-space:nowrap;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis}
+.hud-demo-banner b{color:var(--hud-preview);letter-spacing:1.3px;font-size:9.5px}
+
+@keyframes hud-ring{from{transform:scale(1);opacity:.8}to{transform:scale(1.9);opacity:0}}
+@keyframes hud-level{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+@keyframes hud-tagflash{0%{transform:translateX(-50%) scale(1.12);box-shadow:0 0 28px var(--c)}100%{transform:translateX(-50%) scale(1)}}
+@media (prefers-reduced-motion:reduce){.hud-mic::before,.hud-mic::after,.hud-voice-level i,.hud-voice-dots,.hud-tag3d-flash .hud-tag3d-box{animation:none!important}}
+@media (max-width:980px){.hud-voice{width:calc(100% - 340px);left:12px;transform:none;bottom:50px}.hud-demo-banner{max-width:calc(100% - 340px);left:12px;transform:none}}
+@media (max-width:700px){.hud-voice{width:calc(100% - 24px);bottom:12px}}
+.hud-tag3d[data-phase=recalled] .hud-tag3d-action{text-decoration:line-through;color:var(--hud-text-2)}

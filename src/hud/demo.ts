@@ -19,7 +19,9 @@ export function startHudDemo(feed: HudFeed, host: HTMLElement) {
   banner.setAttribute('role', 'note');
   const caption = document.createElement('span');
   banner.append(Object.assign(document.createElement('b'), {textContent: 'DEV DEMO · SIMULATED VOICE + AGENT EVENTS'}), caption);
-  host.append(banner);
+  // Pinned to the window (not the arena) so it is visible from page load: an obvious
+  // signal that demo mode is active, on the setup screen as well as in play.
+  document.body.append(banner);
 
   let timers: number[] = [], decided = false, stopped = false;
   const at = (ms: number, fn: () => void) => { timers.push(window.setTimeout(() => { if (!stopped) fn(); }, ms)); };

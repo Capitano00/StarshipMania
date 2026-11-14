@@ -17,6 +17,8 @@ export interface UnitSnapshot {
   origin: 'manual' | 'auto';
   /** Changes whenever the unit receives a new order; use it to detect reassignment. */
   assignment: number;
+  /** Assigned by an agent under autonomy (may fire at its own target if the grant includes fire). */
+  autonomous: boolean;
   /** 'Moving' | 'At firing position' | 'Following' | 'Blocked: ...' | 'Waiting: ...' */
   status: string;
   blocked: boolean;
@@ -57,6 +59,12 @@ export interface GameSnapshot {
     fireAtWill: boolean;
     policy: 'A' | 'B';
   };
+  /**
+   * Pilot-controlled authority. Send {runId, epoch} back with every decision: if the pilot
+   * changes control (Recall, manual order, autonomy / Fire at Will toggle) or retries, the
+   * decision is rejected as stale.
+   */
+  control: {autonomy: boolean; autonomyFire: boolean; epoch: number};
   units: UnitSnapshot[];
   turrets: TurretSnapshot[];
   counts: {turretsAlive: number; turretsTotal: number; accepted: number; rejected: number};
@@ -81,12 +89,14 @@ export function snapshot(sim: Simulation, eventLimit = 10): GameSnapshot {
     outcome: sim.outcome,
     mech: {health: sim.health, position: xy(sim.position)},
     fire: {pilot: sim.pilotFire, padisarahPermitted: sim.padisarahFire, padisarahFiring: sim.padisarahFiring, fireAtWill: sim.fireAtWill, policy: sim.preferredPolicy},
+    control: {autonomy: sim.autonomy.enabled, autonomyFire: sim.autonomy.fire, epoch: sim.controlEpoch},
     units: sim.funnels.map(f => ({
       id: f.id,
       order: f.order.type === 'INTERCEPT' ? 'intercept' : 'follow',
       target: f.order.type === 'INTERCEPT' ? f.order.targetId : null,
       origin: f.origin,
       assignment: f.assignment,
+      autonomous: f.autonomous,
       status: f.status,
       blocked: f.blocked,
       arrived: Math.hypot(f.position.x - f.destination.x, f.position.y - f.destination.y) < .15,

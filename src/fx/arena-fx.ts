@@ -67,7 +67,7 @@ void main(){
   #include <colorspace_fragment>
 }`;
 
-type Burst = {mesh: THREE.Mesh; flash: THREE.Sprite; age: number; life: number; grow: number};
+type Burst = {mesh: THREE.Mesh; flash: THREE.Sprite; age: number; life: number; grow: number; strength: number};
 type TurretMark = {group: THREE.Group; brackets: THREE.Mesh[]; health: THREE.Mesh; healthStep: number; material: THREE.MeshBasicMaterial; healthMaterial: THREE.MeshBasicMaterial};
 type DroneFx = {halo: THREE.Sprite; core: THREE.Sprite; light: THREE.PointLight; trail: THREE.Sprite[]; history: THREE.Vector3[]; last: THREE.Vector3 | null; tether: THREE.Line; packets: THREE.Sprite[]};
 type ShotFx = {sprites: THREE.Sprite[]};
@@ -173,12 +173,12 @@ export class ArenaFx {
     return mark;
   }
 
-  private burst(at: THREE.Vector3, color: number, size = 1, life = 26) {
-    const mesh = new THREE.Mesh(new THREE.RingGeometry(.82, 1, 40), flatAdditive(color, .9));
+  private burst(at: THREE.Vector3, color: number, size = 1, life = 26, strength = .9) {
+    const mesh = new THREE.Mesh(new THREE.RingGeometry(.82, 1, 40), flatAdditive(color, strength));
     mesh.rotation.x = -Math.PI / 2; mesh.position.copy(at).setY(.12); mesh.scale.setScalar(.2 * size);
     const flash = new THREE.Sprite(additive(color, this.glow, 1)); flash.position.copy(at).setY(1); flash.scale.setScalar(2.4 * size);
     this.root.add(mesh, flash);
-    this.bursts.push({mesh, flash, age: 0, life, grow: 3.4 * size});
+    this.bursts.push({mesh, flash, age: 0, life, grow: 3.4 * size, strength});
   }
 
   private clearTransient() {
@@ -231,7 +231,7 @@ export class ArenaFx {
         s.visible = !!p;
         if (!p) return;
         const fade = 1 - k / TRAIL;
-        s.position.copy(p); s.scale.setScalar(.75 * fade + .12); s.material.opacity = .55 * fade * fade;
+        s.position.copy(p); s.scale.setScalar(1.05 * fade + .18); s.material.opacity = .42 * fade * fade;
       });
       const target = f.order.type === 'INTERCEPT' ? sim.turrets.find(tu => tu.id === (f.order as {targetId: TargetId}).targetId && tu.health > 0) : undefined;
       fx.tether.visible = !!target;
@@ -299,14 +299,14 @@ export class ArenaFx {
     if (fresh.length) this.lastEvent = fresh[0].id;
     for (const e of fresh) {
       if (e.outcome !== 'Accepted') continue;
-      if (e.action === 'Recall') this.burst(toWorld(sim.position), fxPalette.drone, 2.4, 36);
+      if (e.action === 'Recall') this.burst(toWorld(sim.position), fxPalette.drone, 1.9, 34, .55);
       else if (e.target) { const tu = sim.turrets.find(x => x.id === e.target); if (tu) this.burst(toWorld(tu.position), fxPalette.drone, 1.3, 30); }
     }
     for (const b of this.bursts) {
       b.age++;
       const k = b.age / b.life;
       b.mesh.scale.setScalar(.2 + b.grow * (1 - Math.pow(1 - k, 3)));
-      (b.mesh.material as THREE.MeshBasicMaterial).opacity = .9 * (1 - k);
+      (b.mesh.material as THREE.MeshBasicMaterial).opacity = b.strength * (1 - k);
       b.flash.material.opacity = Math.max(0, 1 - k * 2.2);
     }
     this.bursts = this.bursts.filter(b => { if (b.age < b.life) return true; this.dropBurst(b); return false; });

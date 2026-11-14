@@ -157,3 +157,5 @@ body.hud-v2 #arena-workspace #pause-overlay,body.hud-v2 #arena-workspace #result
 @media (prefers-reduced-motion:reduce){.hud-toast,.hud-rec,.hud-chip i{animation:none!important}body.hud-v2 #arena-inspector{transition:none}}
 @media (max-width:980px){.hud-left{display:none}.hud-gesture{max-width:calc(100% - 330px);left:12px;transform:none}}
 @media (max-width:700px){body.hud-v2 #arena-inspector{width:min(292px,calc(100% - 24px));max-height:45%}.hud-gesture,.hud-rail-toggle{display:none}}
+/* The squad rail now reports the unit group; keep the bar to hull + targets. */
+body.hud-v2 #mission-stats .stats>span:nth-child(3){display:none}

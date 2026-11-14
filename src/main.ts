@@ -4,7 +4,7 @@ let lastWorldAim:{x:number;y:number}|null=null,lastAimRun='',lastAimEpoch=-1;
 let inspector:ReturnType<typeof installInspector>|null=null;
 import './style.css';
 // StarshipMania tactical HUD + arena effects (presentation only; `?classic` restores the original look).
-import {ArenaFx} from './fx/arena-fx';
+import type {ArenaFx} from './fx/arena-fx';
 import {mountHud,type HudHandle} from './hud/hud';
 import {hudFeed} from './hud/feed';
 import {demoRequested,startHudDemo} from './hud/demo';
@@ -105,9 +105,9 @@ let replayStart:number|null=null,replayCaptured=false,replayResumed=false,replay
 let qaAim:TargetId|null=null,qaV02Running=false;
 let replayEvidence={practice:false,movement:false,fire:false,intercept:false,recall:false};
 const video=document.createElement('video');let view:ArenaView|null=null;
-// Three.js is only imported by view.ts, so loading that module on demand keeps it out of the first-load bundle.
-let ArenaViewClass:typeof ArenaView|null=null,arenaViewLoad:Promise<typeof ArenaView>|null=null;
-function loadArenaView(){return arenaViewLoad??=import('./view').then(module=>ArenaViewClass=module.ArenaView,error=>{arenaViewLoad=null;throw error;});}
+// Three.js is only imported by the arena view and its effects layer, so loading both on demand keeps it out of the first-load bundle.
+let ArenaViewClass:typeof ArenaView|null=null,ArenaFxClass:typeof ArenaFx|null=null,arenaViewLoad:Promise<typeof ArenaView>|null=null;
+function loadArenaView(){return arenaViewLoad??=Promise.all([import('./view'),import('./fx/arena-fx')]).then(([view,effects])=>{ArenaFxClass=effects.ArenaFx;return ArenaViewClass=view.ArenaView;},error=>{arenaViewLoad=null;throw error;});}
 // Fetch the arena graphics in the background once setup is idle, so Enter arena rarely has to wait.
 function scheduleArenaPreload(){const preload=()=>void loadArenaView().catch(()=>{});if('requestIdleCallback' in window)requestIdleCallback(preload,{timeout:2000});else setTimeout(preload,500);}
 const trackingPreview=new TrackingPreview(el<HTMLCanvasElement>('camera-preview'),el('camera-feedback'));let showCameraDuringPlay=false;
@@ -191,7 +191,7 @@ function enterArena(mode:'combat'|'training'='combat',after?:()=>void){
   calibration.cancel();pause();if(sim.mode!==mode)resetRound(mode);
   if(!view&&!ArenaViewClass){renderMessage='Loading arena graphics…';loadArenaView().then(()=>{renderMessage='';enterArena(mode,after);},()=>{renderMessage='Arena graphics failed to load · check the connection to the preview server, then retry Enter arena.';after?.();});return;}
   if(!view){try{view=new ArenaViewClass!(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return after?.();}}
-  if(!fx&&!hudClassic&&view.scene){try{fx=new ArenaFx(view.scene,view.renderer);}catch{fx=null;}}
+  if(!fx&&!hudClassic&&ArenaFxClass&&view.scene){try{fx=new ArenaFxClass(view.scene,view.renderer);}catch{fx=null;}}
   renderMessage='';stage='arena';showCameraDuringPlay=false;trackingPreview.setVisible(false);
   el('arena').append(el('tracking-preview'));el('paused-settings').append(el('calibration-guide'));el('setup').hidden=true;el('arena').hidden=false;
   // Mode changes can change canvas height without a window resize event.

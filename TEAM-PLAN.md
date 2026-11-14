@@ -45,7 +45,7 @@ Open [http://127.0.0.1:4180/](http://127.0.0.1:4180/). Choose **Synthetic Rehear
 
 ### 2. Take a small task
 
-Boyong supplies the visible outcome, expected behaviour and files the author may edit. Review the existing readiness PR together before starting if time permits. If it is still pending at build time, branch from current `main` and hold the readiness PR until after integration.
+Boyong supplies the visible outcome, expected behaviour and files the author may edit. Review the existing readiness PR together before starting if time permits. If it is still pending at build time, branch from current `main` and hold the readiness PR until after integration. Open the guide from PR #1 in GitHub if it is not in your checkout yet.
 
 ```powershell
 git switch main
@@ -55,7 +55,7 @@ git switch -c codex/name-task
 
 Replace `name-task` with your name and task. Give Codex or Claude Code these instructions in your checkout:
 
-> Read AGENTS.md and TEAM-PLAN.md. Work on this branch. Task: [one visible change]. Edit only [agreed files]. Show the diff, run the build and relevant checks, and explain what I should verify in the browser. Stop before committing if any check fails or a shared interface must change.
+> Read AGENTS.md and the team guide, which is linked in PR #1. Work on this branch. Task: [one visible change]. Edit only [agreed files]. Show the diff, run the build and relevant checks, and explain what I should verify in the browser. Stop before committing if any check fails or a shared interface must change.
 
 Use one assistant as writer per branch. The UI owner can use Figma Make to experiment with mock states, then port the approved panel into the existing game. Boyong handles the shared wiring. Keep credentials, recordings, camera captures and model files out of the repository.
 

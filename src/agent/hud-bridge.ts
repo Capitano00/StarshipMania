@@ -10,11 +10,12 @@
 import type {Simulation} from '../simulation';
 import type {AgentController, Proposal} from './controller';
 import type {TaskStatus} from './tasks';
+import type {TargetId} from '../contracts';
 
 type Phase = 'idle' | 'planning' | 'proposing' | 'executing' | 'completed' | 'failed' | 'recalled';
 type HudEvent =
   | {type: 'agent.link'; state: 'live' | 'offline'}
-  | {type: 'agent.phase'; droneId: string; phase: Phase; action?: string; reason?: string; targetId?: string}
+  | {type: 'agent.phase'; droneId: string; phase: Phase; action?: string; reason?: string; targetId?: TargetId}
   | {type: 'agent.suggestion'; suggestion: {id: string; droneId: string; action: string; reason: string; status: 'pending' | 'accepted' | 'dismissed' | 'recalled' | 'expired'} | null};
 export interface HudSink {
   publish(event: HudEvent): void;

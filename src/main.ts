@@ -17,11 +17,11 @@ import {AgentController} from './agent/controller';
 import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {describeAction} from './agent/hud-bridge';
 import {createVoiceRecall} from './voice-recall';
-import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
+import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import type {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
-<header><a class="brand" href="/">P<span>◇</span>Z <small>PROJECTZERO</small></a><span class="edition"><strong class="system-brand">Padisarah</strong>FIRST PLAYABLE <b>v0.4.3</b></span><div class="privacy"><i></i><span id="privacy-mode">LOCAL ONLY · NO RECORDING</span></div></header>
+<header><a class="brand" href="/">P<span>◇</span>Z <small>PROJECTZERO</small></a><span class="edition"><strong class="system-brand">Padisarah</strong>FIRST PLAYABLE <b>v0.4.3</b></span><div class="privacy"><i></i><span id="privacy-mode">LOCAL ONLY · NO RECORDING</span></div><a class="metrics-link" href="/metrics.html" target="_blank" rel="noopener">Metrics ↗</a></header>
 <main><section id="setup" class="setup"><div class="intro"><div class="eyebrow">01 / CONTROLS BEFORE COMBAT</div><h1>Remain the pilot.<br><em>Become the commander.</em></h1><p><strong class="system-introduction">Padisarah · your independent-unit control system.</strong><br>Two hands. One mech. Two Padisarah units.<br>Find a comfortable neutral position, then try each action.</p></div>
 <div class="setup-grid"><article class="card"><span class="step">01</span><h2>Settle in</h2><p>Rest your elbows. Keep both open palms visible and separated, with your left hand on the left. Small movements are enough.</p><div class="buttons"><button id="activate" class="primary">Activate webcam</button><button id="synthetic">Synthetic rehearsal</button></div><p class="fine">Camera is off until you choose to activate it. Images and landmarks stay in memory on this device. Stop or background this page to release the camera.</p><p class="fine">Webcam use is optional and requires local setup. Synthetic rehearsal needs no model or camera permission.</p><div id="source-status" class="status" role="status">Camera off</div><div id="tracking-home"><aside id="tracking-preview" class="tracking-preview" hidden><div class="tracking-heading"><strong>Camera view · mirrored</strong><button id="toggle-camera-preview" hidden>Show camera preview</button></div><canvas id="camera-preview" width="320" height="240" aria-label="Mirrored camera view with detected hand landmarks"></canvas><div id="camera-feedback" role="status" aria-live="polite">Camera off</div><div id="camera-fire" class="fire-status" role="status" aria-live="polite">Blocked · camera off</div><p class="tracking-legend">L = your left hand · R = your right hand. Labels are model estimates; confirm they follow your hands. Amber ? means uncertain. Landmarks show the latest processed sample. The amber highlight follows the configured pilot-fire hand only during accepted fresh fire input.</p></aside></div></article>
 <article class="card"><span class="step">02</span><h2>Capture your neutral</h2><p>Click Check both hands, then show both open palms during the countdown. You have 10 seconds after it to capture your comfortable centre. Checking stays paused; Test controls starts separately.</p><div class="palm-map"><div class="comfort left"><span>L · MOVE</span><i id="left-dot"></i></div><div class="comfort right"><span>R · AIM</span><i id="right-dot"></i></div></div><div id="calibration-home"><section id="calibration-guide"><p id="calibration-guide-status" role="status" aria-live="polite"></p><div class="buttons"><button id="calibrate" class="primary">Check both hands / C</button><button id="cancel-calibration" hidden>Cancel calibration</button></div></section></div><button id="test-controls">Test controls</button><p id="calibration-status" class="fine">Neutral not captured</p></article>
@@ -98,6 +98,11 @@ let replayStart:number|null=null,replayCaptured=false,replayResumed=false,replay
 let qaAim:TargetId|null=null,qaV02Running=false;
 let replayEvidence={practice:false,movement:false,fire:false,intercept:false,recall:false};
 const video=document.createElement('video');let view:ArenaView|null=null;
+// Three.js is only imported by view.ts, so loading that module on demand keeps it out of the first-load bundle.
+let ArenaViewClass:typeof ArenaView|null=null,arenaViewLoad:Promise<typeof ArenaView>|null=null;
+function loadArenaView(){return arenaViewLoad??=import('./view').then(module=>ArenaViewClass=module.ArenaView,error=>{arenaViewLoad=null;throw error;});}
+// Fetch the arena graphics in the background once setup is idle, so Enter arena rarely has to wait.
+function scheduleArenaPreload(){const preload=()=>void loadArenaView().catch(()=>{});if('requestIdleCallback' in window)requestIdleCallback(preload,{timeout:2000});else setTimeout(preload,500);}
 const trackingPreview=new TrackingPreview(el<HTMLCanvasElement>('camera-preview'),el('camera-feedback'));let showCameraDuringPlay=false;
 let renderState:'ready'|'lost'|'restart-required'='ready',renderMessage='';
 let settingsOpen=false,settingsFocus:HTMLElement|null=null,resultsShown=false;
@@ -141,7 +146,7 @@ function resetRound(mode:'combat'|'training'){
 }
 function startRound(mode:'combat'|'training'){
   if(settingsOpen||renderState==='lost')return;
-  renderState='ready';renderMessage='';resetRound(mode);enterArena(mode);if(stage==='arena')resume();
+  renderState='ready';renderMessage='';resetRound(mode);enterArena(mode,()=>{if(stage==='arena')resume();});
 }
 function restart(){if(stage==='arena'){startRound(sim.mode);return;}if(settingsOpen||renderState==='lost')return;renderState='ready';renderMessage='';resetRound('combat');}
 function closeSettings(){
@@ -173,16 +178,18 @@ el('calibrate').onclick=calibrate;el('test-controls').onclick=()=>resume();
 el('start-practice').onclick=()=>resume();el('pause-practice').onclick=pause;el('cancel-practice').onclick=pause;el('cancel-resume').onclick=pause;
 el('recalibrate-practice').onclick=calibrate;
 el('cancel-calibration').onclick=()=>calibration.cancel();
-function enterArena(mode:'combat'|'training'='combat'){
-  if(settingsOpen||!controls.calibrated||renderState!=='ready')return;
+// `after` runs once the attempt settles, including after a deferred load of the arena graphics.
+function enterArena(mode:'combat'|'training'='combat',after?:()=>void){
+  if(settingsOpen||!controls.calibrated||renderState!=='ready')return after?.();
   calibration.cancel();pause();if(sim.mode!==mode)resetRound(mode);
-  if(!view){try{view=new ArenaView(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return;}}
+  if(!view&&!ArenaViewClass){renderMessage='Loading arena graphics…';loadArenaView().then(()=>{renderMessage='';enterArena(mode,after);},()=>{renderMessage='Arena graphics failed to load · check the connection to the preview server, then retry Enter arena.';after?.();});return;}
+  if(!view){try{view=new ArenaViewClass!(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return after?.();}}
   renderMessage='';stage='arena';showCameraDuringPlay=false;trackingPreview.setVisible(false);
   el('arena').append(el('tracking-preview'));el('paused-settings').append(el('calibration-guide'));el('setup').hidden=true;el('arena').hidden=false;
   // Mode changes can change canvas height without a window resize event.
-  el('arena').classList.toggle('is-training',mode==='training');sizeArena();
+  el('arena').classList.toggle('is-training',mode==='training');sizeArena();after?.();
 }
-el('enter').onclick=()=>enterArena();
+el('enter').onclick=()=>enterArena();scheduleArenaPreload();
 el('scene').addEventListener('webglcontextlost',event=>{event.preventDefault();calibration.cancel();renderState='lost';renderMessage='Graphics context lost · simulation frozen. Wait for graphics recovery, then Restart.';keys.clear();qaMissingHands.clear();replayStart=null;pause();});
 el('scene').addEventListener('webglcontextrestored',()=>{if(renderState!=='lost')return;renderState='restart-required';renderMessage='Graphics recovered · Restart is required before resuming.';pause();});
 el('back').onclick=()=>{calibration.cancel();pause();stage='controls';trackingPreview.setVisible(true);el('tracking-home').append(el('tracking-preview'));el('calibration-home').append(el('calibration-guide'));el('setup').hidden=false;el('arena').hidden=true;};

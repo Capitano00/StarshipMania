@@ -1,0 +1,189 @@
+{
+ "id": "after-main-merge",
+ "label": "After merging main (supervisor agent + voice Recall)",
+ "capturedAt": "2026-11-14T19:08:20.818Z",
+ "version": "0.4.3",
+ "build": {
+  "ok": true,
+  "seconds": 4.1
+ },
+ "bundle": {
+  "firstLoadGzipBytes": 52041,
+  "laterGzipBytes": 308037
+ },
+ "tests": {
+  "passed": 342,
+  "failed": 71,
+  "newFailures": 0,
+  "todo": 5
+ },
+ "code": {
+  "appLines": 4193,
+  "testLines": 2435
+ },
+ "gameplay": [
+  {
+   "scenario": "Drones on Fire at Will",
+   "commandLatencyMs": 500,
+   "outcome": "won",
+   "seconds": 21.9,
+   "targetsCleared": 6,
+   "healthLeft": 100,
+   "accuracy": 100,
+   "score": 964,
+   "ordersAccepted": 0
+  },
+  {
+   "scenario": "Gesture-deployed drones only",
+   "commandLatencyMs": 500,
+   "outcome": "won",
+   "seconds": 25.3,
+   "targetsCleared": 6,
+   "healthLeft": 100,
+   "accuracy": 100,
+   "score": 958,
+   "ordersAccepted": 6
+  },
+  {
+   "scenario": "Pilot alone",
+   "commandLatencyMs": 500,
+   "outcome": "won",
+   "seconds": 9.8,
+   "targetsCleared": 6,
+   "healthLeft": 100,
+   "accuracy": 73.2,
+   "score": 930,
+   "ordersAccepted": 0
+  },
+  {
+   "scenario": "Pilot + gesture-deployed drones",
+   "commandLatencyMs": 500,
+   "outcome": "won",
+   "seconds": 9.6,
+   "targetsCleared": 6,
+   "healthLeft": 100,
+   "accuracy": 72.1,
+   "score": 928,
+   "ordersAccepted": 6
+  },
+  {
+   "scenario": "Pilot + Fire at Will",
+   "commandLatencyMs": 500,
+   "outcome": "won",
+   "seconds": 9.3,
+   "targetsCleared": 6,
+   "healthLeft": 100,
+   "accuracy": 72.3,
+   "score": 929,
+   "ordersAccepted": 0
+  },
+  {
+   "scenario": "Supervisor agent drones only",
+   "commandLatencyMs": 0,
+   "outcome": "won",
+   "seconds": 28.2,
+   "targetsCleared": 6,
+   "healthLeft": 100,
+   "accuracy": 98.4,
+   "score": 950,
+   "ordersAccepted": 12
+  },
+  {
+   "scenario": "Pilot + supervisor agent",
+   "commandLatencyMs": 0,
+   "outcome": "won",
+   "seconds": 9.1,
+   "targetsCleared": 6,
+   "healthLeft": 100,
+   "accuracy": 75.6,
+   "score": 936,
+   "ordersAccepted": 8
+  }
+ ],
+ "latencySweep": [
+  {
+   "latencyMs": 0,
+   "seconds": 21.9,
+   "score": 964,
+   "outcome": "won"
+  },
+  {
+   "latencyMs": 250,
+   "seconds": 23.6,
+   "score": 961,
+   "outcome": "won"
+  },
+  {
+   "latencyMs": 500,
+   "seconds": 25.3,
+   "score": 958,
+   "outcome": "won"
+  },
+  {
+   "latencyMs": 750,
+   "seconds": 27,
+   "score": 949,
+   "outcome": "won"
+  },
+  {
+   "latencyMs": 1000,
+   "seconds": 28.2,
+   "score": 953,
+   "outcome": "won"
+  },
+  {
+   "latencyMs": 1500,
+   "seconds": 31.3,
+   "score": 948,
+   "outcome": "won"
+  },
+  {
+   "latencyMs": 2000,
+   "seconds": 35.8,
+   "score": 940,
+   "outcome": "won"
+  },
+  {
+   "latencyMs": 3000,
+   "seconds": 42.5,
+   "score": 929,
+   "outcome": "won"
+  }
+ ],
+ "supervisor": {
+  "decisionMs": 1000,
+  "seconds": 28.2,
+  "outcome": "won",
+  "toolCalls": 44,
+  "succeeded": 40,
+  "stale": 0,
+  "invalid": 4,
+  "tasksCompleted": 12,
+  "tasksFailed": 0
+ },
+ "voice": {
+  "phrases": 18,
+  "accuracy": 22.2,
+  "correct": 4,
+  "wrongOrders": 0,
+  "missed": 14,
+  "falseTriggers": 0,
+  "byKind": [
+   {
+    "kind": "clear",
+    "phrases": 11,
+    "correct": 0
+   },
+   {
+    "kind": "misheard",
+    "phrases": 3,
+    "correct": 0
+   },
+   {
+    "kind": "not a command",
+    "phrases": 4,
+    "correct": 4
+   }
+  ]
+ }
+}

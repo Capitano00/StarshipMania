@@ -14,7 +14,8 @@ export function localGameConfig({ ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID }: Nod
     server: local,
     preview: local,
     plugins: [voiceSession(ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID)],
-    build:{target:'es2022'},
+    // Two pages: the game and the metrics page (metrics.html, see metrics/README.md).
+    build:{target:'es2022',rollupOptions:{input:{main:'index.html',metrics:'metrics.html'}}},
   };
 }
 

@@ -1,0 +1,138 @@
+{
+ "about": "Manual benchmark runs of the production preview in Synthetic Rehearsal. The game itself records nothing (see tests/security.test.ts), so add a new run here after measuring.",
+ "method": "Serve with npm run preview, play one round in Synthetic Rehearsal with Fire at Will on, and sample requestAnimationFrame intervals, long animation frames and the JS heap from the page.",
+ "runs": [
+  {
+   "id": "before-lazy-three",
+   "date": "2026-11-14",
+   "label": "Before lazy-loading Three.js",
+   "environment": "Chromium-based in-app browser · macOS · 758×846 viewport at 2× pixel density",
+   "load": {
+    "ttfbMs": 48,
+    "domContentLoadedMs": 130,
+    "loadMs": 175,
+    "initialTransferKB": 177,
+    "initialJsGzipKB": 171
+   },
+   "scenarios": [
+    {
+     "name": "Paused",
+     "seconds": 5,
+     "fps": 60,
+     "p50Ms": 16.7,
+     "p99Ms": 17.7,
+     "maxMs": 17.8,
+     "slowFrames": 0,
+     "longTasks": 0
+    },
+    {
+     "name": "Idle running",
+     "seconds": 8,
+     "fps": 60,
+     "p50Ms": 16.7,
+     "p99Ms": 17.7,
+     "maxMs": 17.7,
+     "slowFrames": 0,
+     "longTasks": 0
+    },
+    {
+     "name": "Combat (Fire at Will)",
+     "seconds": 15,
+     "fps": 60,
+     "p50Ms": 16.7,
+     "p99Ms": 17.7,
+     "maxMs": 17.8,
+     "slowFrames": 0,
+     "longTasks": 0
+    }
+   ],
+   "longAnimationFrames": [
+    {
+     "when": "Choosing Synthetic rehearsal",
+     "ms": 84
+    },
+    {
+     "when": "Entering the arena",
+     "ms": 73
+    }
+   ],
+   "heap": {
+    "startMB": 6.7,
+    "peakMB": 9.6,
+    "settledMB": 7.5
+   }
+  },
+  {
+   "id": "after-lazy-three",
+   "date": "2026-11-14",
+   "label": "After lazy-loading Three.js",
+   "environment": "Chromium-based in-app browser · macOS · 758×846 viewport at 2× pixel density",
+   "load": {
+    "ttfbMs": 10,
+    "domContentLoadedMs": 40,
+    "loadMs": 43,
+    "initialTransferKB": 46,
+    "initialJsGzipKB": 39
+   },
+   "scenarios": [
+    {
+     "name": "Combat (Fire at Will)",
+     "seconds": 15,
+     "fps": 60,
+     "p50Ms": 16.7,
+     "p99Ms": 17.7,
+     "maxMs": 17.8,
+     "slowFrames": 0,
+     "longTasks": 0
+    }
+   ],
+   "longAnimationFrames": [
+    {
+     "when": "Entering the arena",
+     "ms": 87
+    }
+   ],
+   "heap": {
+    "startMB": 4.6,
+    "peakMB": 9.7,
+    "settledMB": null
+   }
+  },
+  {
+   "id": "after-main-merge",
+   "date": "2026-11-14",
+   "label": "After merging main (voice Recall + supervisor agent)",
+   "environment": "Chromium-based in-app browser · macOS · 758×846 viewport at 2× pixel density",
+   "load": {
+    "ttfbMs": 5,
+    "domContentLoadedMs": 37,
+    "loadMs": 39,
+    "initialTransferKB": 52,
+    "initialJsGzipKB": 50.8
+   },
+   "scenarios": [
+    {
+     "name": "Combat (Fire at Will)",
+     "seconds": 15,
+     "fps": 60,
+     "p50Ms": 16.7,
+     "p99Ms": 17.7,
+     "maxMs": 17.8,
+     "slowFrames": 0,
+     "longTasks": 0
+    }
+   ],
+   "longAnimationFrames": [
+    {
+     "when": "Entering the arena",
+     "ms": 87
+    }
+   ],
+   "heap": {
+    "startMB": 5.3,
+    "peakMB": 12,
+    "settledMB": null
+   }
+  }
+ ]
+}

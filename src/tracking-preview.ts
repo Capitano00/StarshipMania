@@ -17,9 +17,11 @@ export class TrackingPreview {
   private context:CanvasRenderingContext2D|null;
   private frame:{capturedAt:number;epoch:number;sequence:number;status:string;overlays:Overlay[]}|null=null;
   private visible=true;
+  private lastPaintAt=-Infinity;
+  private lastPaintKey='';
   private expired:'stale'|'reset'|null=null;
   constructor(private canvas:HTMLCanvasElement,private status:HTMLElement){this.context=canvas.getContext('2d');}
-  clear(){this.frame=null;this.expired=null;this.context?.clearRect(0,0,this.canvas.width,this.canvas.height);}
+  clear(){this.frame=null;this.expired=null;this.lastPaintAt=-Infinity;this.lastPaintKey='';this.context?.clearRect(0,0,this.canvas.width,this.canvas.height);}
   private message(text:string){if(this.status.textContent!==text)this.status.textContent=text;}
   setVisible(visible:boolean){if(this.visible!==visible)this.clear();this.visible=visible;this.canvas.hidden=!visible;}
   observe(sample:Observation,landmarks:unknown,accepted:boolean,currentEpoch:number,presets:{Left:RecognitionPreset;Right:RecognitionPreset}={Left:'Balanced',Right:'Balanced'}){
@@ -51,14 +53,24 @@ export class TrackingPreview {
   }
   render(video:HTMLVideoElement,now:number,epoch:number,active:boolean,loading:boolean,acceptedFreshFire=false,fireHand:'Left'|'Right'='Right'){
     const context=this.context;
-    context?.clearRect(0,0,this.canvas.width,this.canvas.height);
     if(!active&&!loading){this.clear();this.message('Camera off · no image retained');return;}
     if(!this.visible){this.message('Camera preview hidden');return;}
     if(this.frame&&(this.frame.epoch!==epoch||!Number.isFinite(this.frame.capturedAt)||this.frame.capturedAt>now||now-this.frame.capturedAt>200)){
       this.expired=this.frame.epoch!==epoch?'reset':'stale';this.frame=null;
     }
     this.message(this.frame?.status??(this.expired==='stale'?'Stale tracking · waiting for a fresh sample':this.expired==='reset'?'Tracking reset · waiting for a fresh sample':loading?'Acquiring camera / local model…':'Acquiring hand tracking…'));
-    if(!context||!active||video.readyState<2||video.videoWidth<=0||video.videoHeight<=0)return;
+    if(!context)return;
+    if(!active||video.readyState<2||video.videoWidth<=0||video.videoHeight<=0){
+      context.clearRect(0,0,this.canvas.width,this.canvas.height);
+      this.lastPaintAt=-Infinity;
+      return;
+    }
+    // Avoid repainting identical overlays at game refresh rate. Changes to tracking
+    // or fire indication still paint immediately, including removal of stale marks.
+    const paintKey=(this.frame?.sequence??'none')+':'+(acceptedFreshFire?fireHand:'');
+    if(paintKey===this.lastPaintKey&&now-this.lastPaintAt<50)return;
+    this.lastPaintAt=now;this.lastPaintKey=paintKey;
+    context.clearRect(0,0,this.canvas.width,this.canvas.height);
     const rect=previewRect(this.canvas.width,this.canvas.height,video.videoWidth,video.videoHeight);
     context.save();
     try{

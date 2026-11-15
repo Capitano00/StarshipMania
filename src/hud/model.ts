@@ -59,6 +59,7 @@ export function toHudEvent(e: RoundEvent): HudEvent {
 
 /** Which simulation events deserve a transient on-screen acknowledgement. */
 export function toastWorthy(e: RoundEvent) {
+  if (e.action === 'Voice order') return e.outcome === 'Accepted' || e.outcome === 'Rejected' || e.outcome === 'Cancelled';
   return ['Recall', 'Deploy / redirect', 'Command', 'Fire at will', 'Unit deploy', 'Unit recall', 'Squad deploy', 'Autonomy'].includes(e.action) && e.outcome !== 'Finished';
 }
 

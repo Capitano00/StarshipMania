@@ -30,10 +30,21 @@ body.hud-v2 #mission-actions button:hover{border-color:var(--hud-drone);color:va
 
 /* ---------- Tactical (right) rail: the old inspector, compact glass overlay ---------- */
 body.hud-v2 #arena-inspector{position:absolute!important;z-index:6;top:72px;right:12px;bottom:auto;width:292px;max-height:calc(100% - 140px);display:flex!important;flex-direction:column;gap:8px;padding:10px;overflow:auto;border:1px solid var(--hud-hairline)!important;background:var(--hud-glass-bg)!important;backdrop-filter:blur(14px);clip-path:var(--hud-cut);transition:transform .22s ease,opacity .22s ease;scrollbar-width:thin}
+body.hud-v2 #arena-inspector { scrollbar-gutter: stable; }
 body.hud-v2.hud-rail-collapsed #arena-inspector{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none}
 body.hud-v2 #inspector-status{max-height:none!important;overflow:visible!important;gap:6px!important}
 body.hud-v2 #tracking-line{display:none}
 body.hud-v2 #arena-inspector .fire-status{min-height:0!important;padding:6px 9px!important;font-size:11.5px!important;border-radius:var(--hud-r1)!important;border-width:1px 1px 1px 3px!important;background:rgba(19,34,47,.8)!important}
+body.hud-v2 #arena-inspector :is(#weapon-status, #unit-fire-status) {
+  box-sizing: content-box;
+  block-size: 2lh !important;
+  min-block-size: 0 !important;
+  max-block-size: none;
+  overflow: auto;
+  pointer-events: auto;
+  scrollbar-gutter: stable;
+}
+body.hud-v2 #arena-inspector .command-readiness-card strong { min-block-size: 2lh; }
 body.hud-v2 #inspector-map{margin:0!important;display:flex;align-items:center;gap:10px;text-align:left}
 body.hud-v2 #inspector-map .eyebrow{font-size:9px;letter-spacing:1.4px;color:var(--hud-text-3);writing-mode:vertical-rl;transform:rotate(180deg)}
 body.hud-v2 #minimap{width:112px!important;height:112px!important;margin:0!important;opacity:.92}
@@ -157,6 +168,12 @@ body.hud-v2 #arena-workspace #pause-overlay,body.hud-v2 #arena-workspace #result
 @media (prefers-reduced-motion:reduce){.hud-toast,.hud-rec,.hud-chip i{animation:none!important}body.hud-v2 #arena-inspector{transition:none}}
 @media (max-width:980px){.hud-left{display:none}.hud-gesture{max-width:calc(100% - 330px);left:12px;transform:none}}
 @media (max-width:700px){body.hud-v2 #arena-inspector{width:min(292px,calc(100% - 24px));max-height:45%}.hud-gesture,.hud-rail-toggle{display:none}}
+@media (max-width: 700px) {
+  /* The floating rail is already narrow. The legacy dock grid leaves about 60px for pilot status. */
+  body.hud-v2 #inspector-status { display: flex !important; }
+  body.hud-v2 #inspector-status .ability-buttons { flex-direction: row; }
+  body.hud-v2 :is(#inspector-status, #inspector-map, #inspector-aux) { flex-shrink: 0; }
+}
 /* The squad rail now reports the unit group; keep the bar to hull + targets. */
 body.hud-v2 #mission-stats .stats>span:nth-child(3){display:none}
 

@@ -22,13 +22,13 @@ import {ResumeIntent} from './resume-intent';
 import {TrackingPreview} from './tracking-preview';
 import {GuidedCalibration} from './guided-calibration';
 import {AgentController} from './agent/controller';
-import {OrderQueue,type OrderAssignment} from './agent/order-queue';
-import {createVoiceSupervisor} from './agent/voice-supervisor';
+import {OrderQueue,type OrderAssignment,type OrderRow as OrderQueueRow} from './agent/order-queue';
+import {createVoiceSupervisor, describeVoiceAssignments, type VoiceOrderOutcome} from './agent/voice-supervisor';
 import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
 import {createVoiceRecall} from './voice-recall';
-import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
+import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap,captureTrackingBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
@@ -58,7 +58,19 @@ const sensitivityPanel=document.createElement('fieldset');sensitivityPanel.id='s
 const recovery=document.createElement('button');recovery.id='recover-camera';recovery.textContent='Return to setup to activate camera';recovery.hidden=true;el('pause-overlay').append(recovery);
 const weapon=document.createElement('div');weapon.id='weapon-status';weapon.className='fire-status';weapon.setAttribute('role','status');weapon.setAttribute('aria-live','polite');el('arena').append(weapon);
 const practiceActions=document.createElement('div');practiceActions.className='practice-actions';practiceActions.innerHTML='<div class="buttons"><button id="start-practice" class="primary">Start practice</button><button id="pause-practice" hidden>Pause practice</button><button id="cancel-practice" hidden>Cancel start</button><button id="recalibrate-practice">Recalibrate neutral</button></div><section id="practice-readiness" aria-label="Start readiness"><strong id="readiness-summary">Start readiness</strong><ul><li id="readiness-camera"></li><li id="readiness-hands"></li><li id="readiness-open"></li></ul><p id="readiness-guidance"></p></section><p id="practice-start-status" role="status" aria-live="polite"></p><p id="practice-fire" class="fire-status" role="status" aria-live="polite">Blocked · practice paused</p><small>Trigger feedback only · no projectile or hit simulation here.</small>';el('practice').after(practiceActions);
-const inputDetails=document.createElement('details');inputDetails.id='input-details';inputDetails.innerHTML='<summary id="input-details-summary">Input details · local and transient</summary><dl><dt>Fresh accepted pair</dt><dd id="input-fresh">No</dd><dt>Open posture</dt><dd id="input-open">No</dd><dt>Left classification</dt><dd id="input-left-gesture">Unknown</dd><dt>Right classification</dt><dd id="input-right-gesture">Unknown</dd><dt>Recognition presets</dt><dd id="input-presets">Balanced / Balanced</dd></dl><p>Read-only session diagnostics. No images, landmarks, or values are stored.</p>';practiceActions.append(inputDetails);
+const inputDetails=document.createElement('details');inputDetails.id='input-details';inputDetails.innerHTML=`
+  <summary id="input-details-summary">Input details · local and transient</summary>
+  <dl>
+    <dt>Fresh accepted pair</dt><dd id="input-fresh">No</dd>
+    <dt>Open posture</dt><dd id="input-open">No</dd>
+    <dt>Left classification</dt><dd id="input-left-gesture">Unknown</dd>
+    <dt>Right classification</dt><dd id="input-right-gesture">Unknown</dd>
+    <dt>Recognition presets</dt><dd id="input-presets">Balanced / Balanced</dd>
+    <dt>Capture to result</dt><dd id="input-capture-to-result">—</dd>
+    <dt>Worker result interval</dt><dd id="input-result-interval">—</dd>
+  </dl>
+  <p>Read-only session diagnostics. No images, landmarks, or values are stored.</p>`;
+practiceActions.append(inputDetails);
 const resumeStatus=document.createElement('p');resumeStatus.id='resume-status';resumeStatus.setAttribute('role','status');resumeStatus.setAttribute('aria-live','polite');el('pause-overlay').append(resumeStatus);
 const cancelResume=document.createElement('button');cancelResume.id='cancel-resume';cancelResume.textContent='Cancel start';cancelResume.hidden=true;el('pause-overlay').append(cancelResume);
 const pausedSettings=document.createElement('details');pausedSettings.id='paused-settings';pausedSettings.innerHTML='<summary>Recalibration and sensitivity</summary>';el('pause-overlay').append(pausedSettings);
@@ -93,13 +105,56 @@ const orderQueue=new OrderQueue();
 orderQueue.reset(sim.runId);
 function approveVoiceAssignment(current:Simulation,assignments:OrderAssignment[],reason:string){
   const proposal=agentController.submit(current,{kind:'squad',assignments,reason},AgentController.basis(current),{requireApproval:true});
-  return proposal.ok&&agentController.approve(proposal.proposalId,current).ok;
+  return proposal.ok&&agentController.approve(proposal.proposalId,current).ok ? proposal.proposalId : null;
 }
-const voiceSupervisor=createVoiceSupervisor({current:()=>gameplayActive()?sim:null,queue:orderQueue,submit:approveVoiceAssignment,
-  notify:message=>{sim.events.add(sim.tick,'Voice order','Pilot decision',message);}});
+type VoiceReceipt = {summary: string; recallUnit?: OrderAssignment['unit']};
+const voiceReceipts = new Map<string, VoiceReceipt>();
+function presentVoiceOrder(outcome: VoiceOrderOutcome, detail: string) {
+  sim.events.add(sim.tick,'Voice order',outcome,detail);
+  inspector?.voiceTranscript.showOrderResult(outcome,detail);
+}
+const voiceSupervisor=createVoiceSupervisor({
+  current:()=>gameplayActive()?sim:null,
+  queue:orderQueue,
+  submit:(current,assignments,reason)=>{
+    const id=approveVoiceAssignment(current,assignments,reason);
+    if(!id)return false;
+    voiceReceipts.set(id,{summary:describeVoiceAssignments(assignments)});
+    return true;
+  },
+  submitRecall:(current,unit,reason)=>{
+    const proposal=agentController.submit(current,{kind:'recall',unit,reason},AgentController.basis(current),{requireApproval:true});
+    if(!proposal.ok||!agentController.approve(proposal.proposalId,current).ok)return false;
+    voiceReceipts.set(proposal.proposalId,{summary:`Recall ${unit}`,recallUnit:unit});
+    return true;
+  },
+  notify:(message,outcome)=>presentVoiceOrder(outcome,message),
+});
+function recordVoiceResults(current:Simulation){
+  for(const [id,receipt] of voiceReceipts){
+    voiceReceipts.delete(id);
+    const commandId=agentController.proposal(id)?.commandId;
+    const result=commandId ? current.commandLog.find(command=>command.commandId===commandId) : undefined;
+    if(result?.outcome==='accepted'){
+      if(receipt.recallUnit)cancelWaitingOrders(order=>order.assignments.some(a=>a.unit===receipt.recallUnit),receipt.summary);
+      presentVoiceOrder('Accepted',receipt.summary);
+    }else{
+      presentVoiceOrder('Rejected',receipt.summary + ' · ' + (result?.reason ?? 'order expired before execution'));
+    }
+  }
+}
+function cancelWaitingOrders(matches: (order: OrderQueueRow) => boolean, reason: string) {
+  const ids: string[] = [];
+  orderQueue.discardImpossible(order => {
+    if (!matches(order)) return false;
+    ids.push(order.id);
+    return true;
+  });
+  if (ids.length) presentVoiceOrder('Cancelled',ids.join(', ') + ' · ' + reason);
+}
 function clearWaitingOrders(){
-  voiceSupervisor.clear();
-  orderQueue.discardImpossible(()=>true);
+  voiceSupervisor.dismiss();
+  cancelWaitingOrders(()=>true,'Recall');
 }
 installSupervisorRuntime({getSim:()=>stage==='arena'?sim:null,controller:agentController},{exposeGlobal:qaEnabled||new URLSearchParams(location.search).has('supervisor')});
 const autonomyButton=document.createElement('button');autonomyButton.id='autonomy-toggle';autonomyButton.textContent='Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed','false');arenaActions.append(autonomyButton);
@@ -132,6 +187,7 @@ const calibration=new GuidedCalibration();
 let stage:'controls'|'arena'='controls',source:'off'|'camera'|'synthetic'='off',lastEpoch=controls.epoch;
 let prepareMode:PlayMode='combat',cameraSetupRequested=false;
 let diagnosticSample:Observation|null=null;
+let cameraTiming:{epoch:number;resultAt:number;deliveryMs:number;intervalMs:number|null}|null=null;
 let previousPreview:TargetId|null=null,syntheticSeq=0,syntheticAim={x:0,y:0},syntheticLoss=false;const keys=new Set<string>();
 let replayStart:number|null=null,replayCaptured=false,replayResumed=false,replayRecalled=false;
 let qaAim:TargetId|null=null,qaV02Running=false;
@@ -140,9 +196,21 @@ const video=document.createElement('video');let view:ArenaView|null=null;
 const trackingPreview=new TrackingPreview(el<HTMLCanvasElement>('camera-preview'),el('camera-feedback'));let showCameraDuringPlay=false;
 let renderState:'ready'|'lost'|'restart-required'='ready',renderMessage='';
 let settingsOpen=false,settingsFocus:HTMLElement|null=null,resultsShown=false;
-const camera=new CameraInput(video,()=>controls.epoch,(s,landmarks)=>{diagnosticSample=s;const accepted=controls.ingest(s,performance.now());trackingPreview.observe(s,landmarks,accepted,controls.epoch,controls.recognition);},reason=>{
+const camera=new CameraInput(video,()=>controls.epoch,(s,landmarks)=>{
+  const now=performance.now();
+  diagnosticSample=s;
+  cameraTiming={
+    epoch:s.epoch,
+    resultAt:now,
+    deliveryMs:Math.round(now-s.capturedAt),
+    intervalMs:cameraTiming?.epoch===s.epoch?Math.round(now-cameraTiming.resultAt):null,
+  };
+  const accepted=controls.ingest(s,now);
+  trackingPreview.observe(s,landmarks,accepted,controls.epoch,controls.recognition);
+  if(accepted)updateStartIntents(now);
+},reason=>{
   stopVoice();
-  diagnosticSample=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();
+  diagnosticSample=null;cameraTiming=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();
 });
 function clearPending(){queuedActions=[];queuedPolicy=null;if(stage==='arena'&&previousPreview&&!controls.inputArmed)sim.events.add(sim.tick,'Deploy / redirect','Cancelled','Control epoch reset',previousPreview);pending=[];previousPreview=null;lastEpoch=controls.epoch;practiceFeedback.clear();if(controls.paused||!controls.inputArmed)sim.stopFire();}
 function logCancellation(detail:string){const command=controls.bindings.pending;if(stage==='arena'&&(command||pending.length)){sim.events.add(sim.tick,command?.type==='RECALL'?'Recall':'Deploy / redirect','Cancelled',detail,command?.type==='INTERCEPT'?command.targetId:null);previousPreview=null;}}
@@ -174,10 +242,12 @@ function cancelCommand(){logCancellation('Explicit cancel');resumeIntent.cancel(
 function resetRound(mode:'combat'|'training'){
   stopVoice();
   inspector?.voiceTranscript.clear();
+  diagnosticSample=null;cameraTiming=null;
   // Retire old input and its events against the old run, never against its replacement.
   controls.restart();clearPending();
   resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode);sim.preferredPolicy=preferredPolicy;commandId=0;
   orderQueue.reset(sim.runId);
+  voiceReceipts.clear();
   keys.clear();qaMissingHands.clear();syntheticAim={x:0,y:0};syntheticLoss=false;clock.reset();resultsShown=false;
 }
 function startRound(mode:'combat'|'training'){
@@ -324,12 +394,18 @@ function readinessCondition(id:string,label:string,ready:boolean,detail=''){
   const node=el(id);node.textContent=`${ready?'Ready':'Needs attention'} · ${label}${detail?' · '+detail:''}`;node.classList.toggle('is-ready',ready);
 }
 function fireStatus(id:string,text:string){const node=el(id);node.textContent=text;node.classList.toggle('is-held',text.startsWith('Fire input held'));node.classList.toggle('is-blocked',text.startsWith('Blocked'));}
-function loop(now:number){
-  if(!document.hidden){if(source==='synthetic')synthetic(now);else if(source==='camera')void camera.pump();}
-  if(lastEpoch!==controls.epoch)clearPending();
-  if(!document.hidden)calibration.update(now,controls);
+function updateStartIntents(now:number){
+  if(document.hidden)return;
+  calibration.update(now,controls);
   if(resumeIntent.pending&&!canRequestResume())resumeIntent.cancel();
-  if(!document.hidden)resumeIntent.update(now,controls);
+  resumeIntent.update(now,controls);
+}
+function loop(frameTime:number){
+  // A camera callback can capture between the render timestamp and the start of this frame.
+  const now=source==='camera'?performance.now():frameTime;
+  if(!document.hidden&&source==='synthetic')synthetic(now);
+  if(lastEpoch!==controls.epoch)clearPending();
+  updateStartIntents(now);
   // Previous frame's preview has had a paint opportunity; start conservative visible dwell now.
   if(!document.hidden&&now-lastDraw<200)controls.markRendered(previousPreview,now);
   if(lastAimRun!==sim.runId||lastAimEpoch!==controls.epoch){lastWorldAim=null;lastAimRun=sim.runId;lastAimEpoch=controls.epoch;}
@@ -354,17 +430,19 @@ function loop(now:number){
   const agentCommands=agentController.drain(sim);void before;
   if(gameplayActive()&&sim.tick%15===0&&!commands.length&&!agentCommands.length&&!intents.length){
     const targetAlive=(target:TargetId)=>sim.turrets.some(t=>t.id===target&&t.health>0);
-    orderQueue.discardImpossible(order=>order.assignments.some(a=>!targetAlive(a.target)));
-    orderQueue.dispatch(order=>order.assignments.every(a=>sim.funnels.some(f=>f.id===a.unit&&f.order.type==='RECALL')&&sim.canRouteIntercept(a.unit,a.target)),order=>{
+    cancelWaitingOrders(order=>order.assignments.some(a=>!targetAlive(a.target)),'target unavailable');
+    const dispatched=orderQueue.dispatch(order=>order.assignments.every(a=>sim.funnels.some(f=>f.id===a.unit&&f.order.type==='RECALL')&&sim.canRouteIntercept(a.unit,a.target)),order=>{
       if(!approveVoiceAssignment(sim,order.assignments,order.reason))return false;
       const batch=agentController.drain(sim);
       const accepted=sim.accepted;
       sim.commands(batch);
       return sim.accepted>accepted;
     });
+    if(dispatched)presentVoiceOrder('Accepted',dispatched.id + ' · ' + describeVoiceAssignments(dispatched.assignments));
   }
   const recalls=sim.recalls;
   sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  if(voiceReceipts.size)recordVoiceResults(sim);
   if(sim.recalls>recalls)clearWaitingOrders();
   // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
   if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
@@ -408,11 +486,14 @@ function loop(now:number){
   el('input-details-summary').textContent='Input details · local and transient';el('input-fresh').textContent=diagnosticHands.some(h=>h.side!=='Left'&&h.side!=='Right')?'No · unknown hand identity; input blocked':readiness.fresh?'Yes · ≤ 200 ms':'No';el('input-open').textContent=readiness.openPosture?'Yes · both Open Palm':'No';
   for(const side of ['Left','Right'] as const){const hand=diagnosticHands.find(h=>h.side===side);el(`input-${side.toLowerCase()}-gesture`).textContent=hand?`${hand.gesture?.category??'Unknown'} · ${hand.gesture?.score.toFixed(2)??'no score'} · ${recognize(hand.gesture,controls.recognition[side])?'recognised':'tracked, gesture uncertain'}`:'Tracking unavailable';}
   el('input-presets').textContent=`Left ${controls.recognition.Left} / Right ${controls.recognition.Right}`;
+  const timing=source==='camera'&&cameraTiming?.epoch===controls.epoch?cameraTiming:null;
+  el('input-capture-to-result').textContent=timing?`${timing.deliveryMs} ms`:'—';
+  el('input-result-interval').textContent=timing?.intervalMs!=null?`${timing.intervalMs} ms`:'—';
   el<HTMLButtonElement>('enter').disabled=!controls.calibrated||renderState!=='ready';
   el<HTMLButtonElement>('train').disabled=!controls.calibrated||renderState!=='ready';
   el('arena-error').hidden=!renderMessage;el('arena-error').textContent=renderMessage;
   el('synthetic-help').hidden=source!=='synthetic'||!el('title-screen').hidden;el('tracking-state').textContent=controls.paused?'PAUSED':controls.needsRearm?'RECOVERY REQUIRED':controls.latest?'TRACKING':'INPUT NEUTRAL';
-  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${controls.processingMs.toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}`;
+  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${(source==='camera'&&diagnosticSample?diagnosticSample.processingMs:controls.processingMs).toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}${timing?' · capture to result '+timing.deliveryMs+' ms':''}`;
   el('health').textContent=String(sim.health);el<HTMLMeterElement>('health-meter').value=sim.health;el('remaining').textContent=`${sim.turrets.filter(t=>t.health>0).length} / ${sim.turrets.length}`;
   el('order-text').textContent=sim.funnels.map(f=>f.id+': '+(f.order.type==='INTERCEPT'?f.order.targetId:'Follow')+(f.blocked?' Blocked':'')).join(' / ');el('order-text').title=sim.funnels.map(f=>f.id+': '+f.status+' / '+f.origin).join(' / ');el('order-message').textContent=sim.groupState+' / '+sim.message;
   el('hit-feedback').textContent=sim.lastHit&&sim.tick-sim.lastHit.tick<90?`${sim.lastHit.team==='funnel'?'Padisarah':'Pilot'} hit ${sim.lastHit.target} · collision confirmed`:'';
@@ -452,10 +533,11 @@ function loop(now:number){
   previousPreview=controls.preview;lastDraw=now;renderCommandReadiness(controls.commandReadiness(now));
   if(stage==='arena'){
     const tracking=source==='camera'&&camera.ready?controls.trackingStatus(now):'';
+    const hasHandInput=controls.handReady('Left',now)||controls.handReady('Right',now);
     const hands=source==='synthetic'?'Keyboard rehearsal · camera off'
       :source==='off'?'Camera off'
       :calibration.pending?'Calibrating'
-      :camera.ready?(controls.paused?'Tracking · arena paused':!controls.inputArmed?'Tracking · open hands to resume':'Tracking')
+      :camera.ready?(controls.paused?'Tracking · arena paused':!controls.inputArmed?'Tracking · open hands to resume':hasHandInput?'Tracking':'No hand input')
       :camera.status;
     inspector?.render(sim,lastWorldAim??sim.position,tracking,hands);
     inspector?.orderQueue?.render(orderQueue.rows(),voiceSupervisor.pending());
@@ -531,8 +613,8 @@ if(qaEnabled){
       const bitmap=await captureBitmap(canvas);corrected=bitmap.width===640&&bitmap.height===480;bitmap.close();
       stream=canvas.captureStream(30);const syntheticStream=stream;const syntheticVideo=document.createElement('video');
       await new Promise<void>((resolve,reject)=>{
-        probe=new CameraInput(syntheticVideo,()=>0,()=>{if(++observations>=3)resolve();},reason=>{if(reason!=='Starting camera'&&reason!=='Synthetic check complete')reject(new Error('synthetic capture stopped'));},{media:{getUserMedia:async()=>syntheticStream},createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureBitmap,now:()=>performance.now(),hidden:()=>document.hidden});
-        let frame=0;timer=setInterval(()=>{context.fillStyle=++frame%2?'#101010':'#202020';context.fillRect(0,0,640,480);void probe!.pump();},33);
+        probe=new CameraInput(syntheticVideo,()=>0,()=>{if(++observations>=3)resolve();},reason=>{if(reason!=='Starting camera'&&reason!=='Synthetic check complete')reject(new Error('synthetic capture stopped'));},{media:{getUserMedia:async()=>syntheticStream},createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureTrackingBitmap,now:()=>performance.now(),hidden:()=>document.hidden});
+        let frame=0;timer=setInterval(()=>{context.fillStyle=++frame%2?'#101010':'#202020';context.fillRect(0,0,640,480);},33);
         timeout=setTimeout(()=>reject(new Error('synthetic capture timeout')),30000);void probe.activate();
       });
       result.textContent=`${corrected&&observations>=3?'PASS':'FAIL'} native capture: old receiver=${oldResult}; corrected canvas=${corrected}; detached video observations=${observations}; real local worker; hardware camera off`;
@@ -544,11 +626,11 @@ if(qaEnabled){
 if(qaEnabled){el('probe').hidden=false;el('probe').onclick=async()=>{const result=el('probe-result');const button=el<HTMLButtonElement>('probe');if(camera.active||camera.loading){result.textContent='Stop the webcam before this synthetic-only check.';return;}button.disabled=true;const unavailable=await checkWebcamAssets();if(unavailable||camera.active||camera.loading){button.disabled=false;result.textContent=unavailable??'Stop the webcam before this synthetic-only check.';return;}result.textContent='Loading local model · blank synthetic image only';const worker=new Worker('/tracking-worker.js');const timeout=setTimeout(()=>{worker.terminate();button.disabled=false;result.textContent='FAIL: local worker timeout';},30000);worker.onerror=()=>{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent='FAIL: worker error';};worker.onmessage=async({data})=>{if(data.type==='ready'){const canvas=new OffscreenCanvas(640,480);canvas.getContext('2d')!.fillRect(0,0,640,480);const bitmap=canvas.transferToImageBitmap();worker.postMessage({type:'frame',bitmap,epoch:0,sequence:1,capturedAt:performance.now()},[bitmap]);}else{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent=data.type==='observation'?`PASS: local model processed blank synthetic image; ${data.hands.length} hands, ${data.processingMs.toFixed(1)} ms (not camera latency)`:'FAIL: '+data.message;}};worker.postMessage({type:'init'});};}
 
 inspector=installInspector(()=>view?.resize(),()=>openSettings(),{
-  promote:id=>{if(gameplayActive())orderQueue.promote(id);},
-  cancel:id=>{orderQueue.cancel(id);},
+  promote:id=>{if(gameplayActive()&&orderQueue.promote(id))presentVoiceOrder('Waiting',id+' promoted');},
+  cancel:id=>{if(orderQueue.cancel(id))presentVoiceOrder('Cancelled',id);},
   confirm:()=>voiceSupervisor.confirm(),
   defer:()=>voiceSupervisor.confirm(true),
-  dismiss:()=>voiceSupervisor.clear(),
+  dismiss:()=>voiceSupervisor.dismiss(),
 })??null;
 el('voice-panel')?.append(createVoiceGuide());
 hud=hudClassic?null:mountHud();if(hud&&qaEnabled)Object.assign(globalThis,{__hudFeed:hudFeed});
@@ -582,9 +664,16 @@ const voiceRecall=createVoiceRecall(() => recall('local-voice-recall'), (state, 
   renderVoiceStatus();voiceHud?.status(state,detail);
 }, event=>{inspector?.voiceTranscript.update(event);voiceHud?.event(event);},
 ()=> {
-  const tools=getSupervisorTools()?.adapters.clientTools();
+  const runtime=getSupervisorTools();
+  const tools=runtime?.adapters.clientTools();
   return {
-    ...(tools?{get_game_state:tools.get_game_state,get_recent_events:tools.get_recent_events,get_task_status:tools.get_task_status}:{}),
+    ...(runtime&&tools?{
+      get_game_state:(input:unknown)=>{
+        const result=runtime.call('get_game_state',input);
+        return JSON.stringify(result.ok?{...result,authority:'Voice proposals require pilot approval in Orders. A fresh emergency Recall is immediate.'}:result);
+      },
+      get_recent_events:tools.get_recent_events,get_task_status:tools.get_task_status,
+    }:{}),
     ...voiceSupervisor.clientTools(),
   };
 });

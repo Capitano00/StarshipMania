@@ -234,6 +234,19 @@ body:has(#arena:not([hidden])) #app>header,body:has(#arena:not([hidden])) #app>f
  #arena-inspector #log-scroll{max-height:90px}
 }
 /* v0.4.2: controller-derived command readiness stays inside the Padisarah panel. */
+/* Preserve the preview and calibration positions as live tracking text changes. */
+.tracking-preview #camera-feedback,
+.tracking-preview .fire-status {
+  overflow: auto;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+.tracking-preview #camera-feedback { block-size: 3lh; }
+.tracking-preview .fire-status {
+  box-sizing: content-box;
+  block-size: 2lh;
+  min-block-size: 0;
+}
 #padisarah-panel{display:flex;flex-direction:column;gap:4px;min-width:0;border:1px solid #665a79;border-radius:5px;padding:5px;background:#15232f}
 #padisarah-panel #unit-fire-status{border:0;border-left:3px solid #8dd9d0}
 #padisarah-panel #order-text{font-size:12px;line-height:15px;margin:0;padding:0;font-weight:500}

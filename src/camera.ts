@@ -1,6 +1,21 @@
 import type {Observation} from './controls';
+const MAX_FRAME_AGE_MS=200;
 // Native Web APIs require their global receiver, not the CameraHost object.
 export const captureBitmap=(source:ImageBitmapSource)=>globalThis.createImageBitmap(source);
+const TRACKING_BITMAP_MAX_SIDE=320;
+/** Keep the preview at native resolution while sending fewer pixels to the local worker. */
+export function captureTrackingBitmap(video:HTMLVideoElement) {
+  const {videoWidth:width,videoHeight:height}=video;
+  const longestSide=Math.max(width,height);
+  if(!(width>0&&height>0)||longestSide<=TRACKING_BITMAP_MAX_SIDE)return captureBitmap(video);
+  const scale=TRACKING_BITMAP_MAX_SIDE/longestSide;
+  return globalThis.createImageBitmap(video,{
+    resizeWidth:Math.max(1,Math.round(width*scale)),
+    resizeHeight:Math.max(1,Math.round(height*scale)),
+    resizeQuality:'low',
+  });
+}
+
 function captureFailure(error:unknown):string {
   const name=error instanceof Error?error.name:'';
   const detail=name==='InvalidStateError'?'video frame not ready':name==='SecurityError'?'browser blocked frame access':name==='TypeError'?'browser capture API failed':'frame extraction failed';
@@ -14,9 +29,9 @@ export interface CameraHost {
 export class CameraInput {
   active=false;loading=false;ready=false;status='Camera off';dropped=0;
   private generation=0;private stream:MediaStream|null=null;private worker:Worker|null=null;private busy=false;private sequence=0;
-  private callbackId:number|null=null;private lastPresented=-1;private delivery:{capturedAt:number;epoch:number}|null=null;
+  private callbackId:number|null=null;private lastPresented=-1;
   private initializationTimer:ReturnType<typeof setTimeout>|null=null;
-  constructor(private video:HTMLVideoElement,private epoch:()=>number,private observe:(s:Observation,landmarks?:unknown)=>void,private stopped:(reason:string)=>void,private host:CameraHost={media:navigator.mediaDevices,createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureBitmap,now:()=>performance.now(),hidden:()=>document.hidden}){}
+  constructor(private video:HTMLVideoElement,private epoch:()=>number,private observe:(s:Observation,landmarks?:unknown)=>void,private stopped:(reason:string)=>void,private host:CameraHost={media:navigator.mediaDevices,createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureTrackingBitmap,now:()=>performance.now(),hidden:()=>document.hidden}){}
   async activate(checkAvailability?:()=>Promise<string|null>) {
     this.stop('Starting camera');const generation=this.generation;this.loading=true;this.status=checkAvailability?'Checking local webcam setup':'Waiting for camera permission';
     if(typeof this.video.requestVideoFrameCallback!=='function'||typeof this.video.cancelVideoFrameCallback!=='function'){this.stop('Frame-delivery API unavailable · camera disabled safely');return;}
@@ -72,21 +87,20 @@ export class CameraInput {
       this.lastPresented=metadata.presentedFrames;
       // Browser delivery/compositor time, never the advancing playback clock or callback receipt time.
       const capturedAt=Number.isFinite(metadata.captureTime)?Math.min(metadata.captureTime!,metadata.presentationTime):metadata.presentationTime;
-      if(!Number.isFinite(capturedAt)||capturedAt>this.host.now()||this.host.now()-capturedAt>200){this.delivery=null;return;}
-      if(!this.ready||this.busy){this.dropped++;this.delivery=null;return;}
-      this.delivery={capturedAt,epoch:this.epoch()};
+      const now=this.host.now();
+      if(!Number.isFinite(capturedAt)||capturedAt>now||now-capturedAt>MAX_FRAME_AGE_MS)return;
+      if(!this.ready||this.busy){this.dropped++;return;}
+      if(!this.worker||this.video.readyState<2)return;
+      return this.captureFrame(generation,capturedAt,this.epoch());
     });
   }
-  async pump() {
-    if(!this.active||!this.ready||!this.worker||this.video.readyState<2)return;
-    if(this.busy||!this.delivery)return;
-    const {capturedAt,epoch}=this.delivery;this.delivery=null;
-    if(epoch!==this.epoch()||this.host.now()-capturedAt>200)return;
-    this.busy=true;const generation=this.generation,sequence=++this.sequence;
+  private async captureFrame(generation:number,capturedAt:number,epoch:number) {
+    this.busy=true;
+    const sequence=++this.sequence;
     let bitmap:ImageBitmap|undefined;
     try {
       bitmap=await this.host.bitmap(this.video);
-      if(generation!==this.generation||epoch!==this.epoch()||this.host.now()-capturedAt>200||this.host.hidden()||!this.worker){bitmap.close();if(generation===this.generation)this.busy=false;return;}
+      if(generation!==this.generation||epoch!==this.epoch()||this.host.now()-capturedAt>MAX_FRAME_AGE_MS||this.host.hidden()||!this.worker){bitmap.close();if(generation===this.generation)this.busy=false;return;}
       this.worker.postMessage({type:'frame',bitmap,epoch,sequence,capturedAt},[bitmap]);
     } catch(error) {bitmap?.close();if(generation===this.generation)this.stop(captureFailure(error));}
   }
@@ -94,7 +108,7 @@ export class CameraInput {
   stop(reason='Camera stopped') {
     this.clearInitializationTimer();
     this.generation++;this.stream?.getTracks().forEach(t=>t.stop());this.stream=null;
-    if(this.callbackId!==null)this.video.cancelVideoFrameCallback(this.callbackId);this.callbackId=null;this.delivery=null;
+    if(this.callbackId!==null)this.video.cancelVideoFrameCallback(this.callbackId);this.callbackId=null;
     this.worker?.terminate();this.worker=null;this.video.pause();this.video.srcObject=null;
     this.active=false;this.loading=false;this.ready=false;this.busy=false;this.lastPresented=-1;this.status=reason;
     this.stopped(reason);

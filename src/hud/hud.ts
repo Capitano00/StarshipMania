@@ -225,7 +225,7 @@ export function mountHud(feed: HudFeed = defaultFeed): HudHandle | null {
       renderStrip(preview);
       const fresh = sim.events.entries.filter(e => e.id > lastEvent);
       if (fresh.length) lastEvent = fresh[0].id;
-      for (const e of fresh.reverse()) if (toastWorthy(e)) { const ev = toHudEvent(e); toast(ev.severity, ev.title, `${e.outcome} · ${formatTime(e.tick)}`, now); }
+      for (const e of fresh.reverse()) if (toastWorthy(e)) { const ev = toHudEvent(e); toast(ev.severity, ev.title, e.action === 'Voice order' ? ev.detail : `${e.outcome} · ${formatTime(e.tick)}`, now); }
       agentVoice.update({sim, camera});
       for (let i = toasts.length - 1; i >= 0; i--) if (now - toasts[i].born > TOAST_MS) { toasts[i].node.remove(); toasts.splice(i, 1); }
     },

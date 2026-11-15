@@ -2,6 +2,10 @@
 
 Pilot a mech and command two Padisarah drones in your browser. Play with a keyboard or opt in to local hand tracking. See [provenance](PROVENANCE.md) and [third-party notices](THIRD_PARTY.md) for the ProjectZero baseline and bundled dependencies.
 
+## Design
+
+[View the Figma prototype](https://www.figma.com/proto/vwTEIvmcJ0KOigrm6jpESo/StarshipMania-%E2%80%94-Tactical-HUD?node-id=33-2&scaling=contain&content-scaling=fixed&page-id=22%3A61&starting-point-node-id=33%3A2): three frames covering the before and after, the HUD components, and the human + AI interaction flow. Click to move between frames.
+
 ## Run the camera-free build
 
 With Node 24 and npm, from this directory:

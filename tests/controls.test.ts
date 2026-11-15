@@ -1,8 +1,105 @@
 import {describe,it,expect} from 'vitest';
 import {Controls,type Observation} from '../src/controls';
+import {neutralFrame} from '../src/contracts';
 const sample=(c:Controls,t:number,left='Open_Palm',right='Open_Palm'):Observation=>({epoch:c.epoch,sequence:t,capturedAt:t,processingMs:8,hands:[{side:'Left',palm:{x:.3,y:.5},gesture:{category:left,score:1},confidence:.99},{side:'Right',palm:{x:.7,y:.5},gesture:{category:right,score:1},confidence:.99}]});
 function ready(){const c=new Controls();c.ingest(sample(c,0),0);expect(c.calibrate(0)).toBe(true);expect(c.resume(0)).toBe(true);return c;}
 const feed=(c:Controls,t:number,l='Open_Palm',r='Open_Palm',target:'T1'|'T2'|null='T1')=>{c.ingest(sample(c,t,l,r),t);return c.update(t,target);};
+describe('render expiry retains identity only for continuous fresh captures',()=>{
+ it('stops between samples and recovers steering at 125 ms cadence with 135 ms delivery delay',()=>{
+  const c=ready();
+  for(const capturedAt of [125,250,375,500]){
+   const expiredAt=capturedAt-125+201;
+   expect(c.update(expiredAt,null)).toEqual({frame:neutralFrame(),commit:null});
+   expect(c.latest).toBeNull();
+   expect(c.pointer(expiredAt-2)).toEqual({x:0,y:0});
+   const next=sample(c,capturedAt);
+   next.hands[0].palm.x+=.06;next.hands[1].palm.y-=.04;
+   const receivedAt=capturedAt+135;
+   expect(c.ingest(next,receivedAt)).toBe(true);
+   expect(c.handReady('Left',receivedAt)&&c.handReady('Right',receivedAt)).toBe(true);
+   const {frame}=c.update(receivedAt,null);
+   expect(frame.move.x).toBeGreaterThan(.5);expect(frame.aim.y).toBeCloseTo(.4);
+   expect(c.update(capturedAt+200,null).frame).toEqual(frame);
+  }
+ });
+ it('revokes fire and pending deploy until fresh render and samples reconfirm them',()=>{
+  const c=ready();
+  feed(c,20,'Pointing_Up','Closed_Fist');c.markRendered('T1',20);
+  expect(feed(c,100,'Pointing_Up','Closed_Fist').frame.fire).toBe(true);
+  feed(c,140,'Pointing_Up','Closed_Fist');expect(c.commandProgress).toBe(40);
+
+  expect(c.update(341,'T1')).toEqual({frame:neutralFrame(),commit:null});
+  expect(c.latest).toBeNull();
+  expect(c.preview).toBeNull();expect(c.visibleTarget).toBeNull();expect(c.visibleSince).toBe(0);
+  expect(c.bindings.pending).toBeNull();expect(c.commandProgress).toBe(0);
+  expect(c.bindings.fire).toBe(false);expect(c.bindings.padisarahFire).toBe(false);
+  expect(c.commandReadiness(341).deploy.state).toBe('Waiting for hand');
+
+  c.ingest(sample(c,265,'Pointing_Up','Closed_Fist'),400);
+  expect(c.handReady('Left',400)&&c.handReady('Right',400)).toBe(true);
+  expect(c.update(400,'T1')).toMatchObject({frame:{fire:false},commit:null});
+  expect(c.preview).toBe('T1');expect(c.visibleTarget).toBeNull();
+  c.markRendered('T1',400);
+  c.ingest(sample(c,390,'Pointing_Up','Closed_Fist'),450);
+  expect(c.update(450,'T1')).toMatchObject({frame:{fire:true},commit:null});
+  expect(c.commandProgress).toBe(0);
+  expect(feed(c,470,'Pointing_Up','Closed_Fist').commit).toBeNull();
+  expect(c.commandProgress).toBe(80);
+ });
+ it('does not rearm a completed gesture when identity continues after expiry',()=>{
+  const c=ready();
+  feed(c,20,'Pointing_Up');c.markRendered('T1',20);
+  for(const t of [100,225,350,475])expect(feed(c,t,'Pointing_Up').commit).toBeNull();
+  expect(feed(c,600,'Pointing_Up').commit).toBe('T1');
+  c.acknowledgeCommand(true);
+  expect(c.update(801,'T1').frame).toEqual(neutralFrame());
+  c.ingest(sample(c,725,'Pointing_Up'),860);
+  expect(c.update(860,'T1').commit).toBeNull();
+  expect(c.commandReadiness(860).deploy.state).toBe('Issued');
+  for(const t of [850,975,1100,1225,1350]){
+   const now=t+135;
+   c.ingest(sample(c,t,'Pointing_Up'),now);
+   expect(c.update(now,'T1').commit).toBeNull();
+   expect(c.commandReadiness(now).deploy.state).toBe('Issued');
+  }
+ });
+ it('reconfirms identity after a capture gap greater than 200 ms',()=>{
+  const c=ready();feed(c,125);c.update(326,null);
+  expect(c.ingest(sample(c,326),461)).toBe(true);
+  expect(c.handReady('Left',461)||c.handReady('Right',461)).toBe(false);
+  expect(c.update(461,null).frame).toEqual({...neutralFrame(),padisarahFire:false});
+  expect(c.ingest(sample(c,406),541)).toBe(true);
+  expect(c.handReady('Left',541)&&c.handReady('Right',541)).toBe(true);
+ });
+ it.each(['stale on arrival','invalid capture time','missing hand','duplicate identity','crossed pair','position jump'])('reconfirms after %s during an expired render window',kind=>{
+  const c=ready();feed(c,125);c.update(326,null);
+  const invalid=sample(c,250);
+  if(kind==='invalid capture time')invalid.capturedAt=NaN;
+  if(kind==='missing hand')invalid.hands.pop();
+  if(kind==='duplicate identity')invalid.hands.push(invalid.hands[1]);
+  if(kind==='crossed pair')invalid.hands[1].palm.x=.28;
+  if(kind==='position jump')invalid.hands[1].palm.y=.74;
+  const leftStillTracked=['missing hand','duplicate identity','position jump'].includes(kind);
+  expect(c.ingest(invalid,kind==='stale on arrival'?451:385)).toBe(leftStillTracked);
+  expect(c.ingest(sample(c,375),510)).toBe(true);
+  expect(c.handReady('Left',510)).toBe(leftStillTracked);
+  expect(c.handReady('Right',510)).toBe(false);
+  expect(c.ingest(sample(c,455),590)).toBe(true);
+  expect(c.handReady('Right',590)).toBe(true);
+ });
+ it('ignores previous epochs and non-increasing sequences; a new epoch resets identity',()=>{
+  const c=ready();feed(c,125);c.update(326,null);
+  const next=sample(c,250);
+  expect(c.ingest({...next,epoch:c.epoch-1},385)).toBe(false);
+  expect(c.ingest({...next,sequence:125},385)).toBe(false);
+  expect(c.ingest(next,385)).toBe(true);
+  expect(c.handReady('Right',385)).toBe(true);
+  c.pause();
+  expect(c.ingest({...next,sequence:375,capturedAt:375},510)).toBe(false);
+  expect(c.ingest(sample(c,375),510)).toBe(true);
+  expect(c.handReady('Right',510)).toBe(false);
+ });
+});
 describe('v043 correction2 Recall channel isolation through production Controls',()=>{
  it('R during Left Thumb Up dash confirmation preserves completion at80ms and never repeats while held',()=>{
   const c=new Controls(),config=c.configuration;config.bindings.shortDash={hand:'Left',pose:'Thumb_Up',activation:'Instant'};config.bindings.fireAtWill={hand:'Right',pose:'Thumb_Down',activation:'Duration'};

@@ -58,7 +58,19 @@ const sensitivityPanel=document.createElement('fieldset');sensitivityPanel.id='s
 const recovery=document.createElement('button');recovery.id='recover-camera';recovery.textContent='Return to setup to activate camera';recovery.hidden=true;el('pause-overlay').append(recovery);
 const weapon=document.createElement('div');weapon.id='weapon-status';weapon.className='fire-status';weapon.setAttribute('role','status');weapon.setAttribute('aria-live','polite');el('arena').append(weapon);
 const practiceActions=document.createElement('div');practiceActions.className='practice-actions';practiceActions.innerHTML='<div class="buttons"><button id="start-practice" class="primary">Start practice</button><button id="pause-practice" hidden>Pause practice</button><button id="cancel-practice" hidden>Cancel start</button><button id="recalibrate-practice">Recalibrate neutral</button></div><section id="practice-readiness" aria-label="Start readiness"><strong id="readiness-summary">Start readiness</strong><ul><li id="readiness-camera"></li><li id="readiness-hands"></li><li id="readiness-open"></li></ul><p id="readiness-guidance"></p></section><p id="practice-start-status" role="status" aria-live="polite"></p><p id="practice-fire" class="fire-status" role="status" aria-live="polite">Blocked · practice paused</p><small>Trigger feedback only · no projectile or hit simulation here.</small>';el('practice').after(practiceActions);
-const inputDetails=document.createElement('details');inputDetails.id='input-details';inputDetails.innerHTML='<summary id="input-details-summary">Input details · local and transient</summary><dl><dt>Fresh accepted pair</dt><dd id="input-fresh">No</dd><dt>Open posture</dt><dd id="input-open">No</dd><dt>Left classification</dt><dd id="input-left-gesture">Unknown</dd><dt>Right classification</dt><dd id="input-right-gesture">Unknown</dd><dt>Recognition presets</dt><dd id="input-presets">Balanced / Balanced</dd></dl><p>Read-only session diagnostics. No images, landmarks, or values are stored.</p>';practiceActions.append(inputDetails);
+const inputDetails=document.createElement('details');inputDetails.id='input-details';inputDetails.innerHTML=`
+  <summary id="input-details-summary">Input details · local and transient</summary>
+  <dl>
+    <dt>Fresh accepted pair</dt><dd id="input-fresh">No</dd>
+    <dt>Open posture</dt><dd id="input-open">No</dd>
+    <dt>Left classification</dt><dd id="input-left-gesture">Unknown</dd>
+    <dt>Right classification</dt><dd id="input-right-gesture">Unknown</dd>
+    <dt>Recognition presets</dt><dd id="input-presets">Balanced / Balanced</dd>
+    <dt>Capture to result</dt><dd id="input-capture-to-result">—</dd>
+    <dt>Worker result interval</dt><dd id="input-result-interval">—</dd>
+  </dl>
+  <p>Read-only session diagnostics. No images, landmarks, or values are stored.</p>`;
+practiceActions.append(inputDetails);
 const resumeStatus=document.createElement('p');resumeStatus.id='resume-status';resumeStatus.setAttribute('role','status');resumeStatus.setAttribute('aria-live','polite');el('pause-overlay').append(resumeStatus);
 const cancelResume=document.createElement('button');cancelResume.id='cancel-resume';cancelResume.textContent='Cancel start';cancelResume.hidden=true;el('pause-overlay').append(cancelResume);
 const pausedSettings=document.createElement('details');pausedSettings.id='paused-settings';pausedSettings.innerHTML='<summary>Recalibration and sensitivity</summary>';el('pause-overlay').append(pausedSettings);
@@ -175,7 +187,7 @@ const calibration=new GuidedCalibration();
 let stage:'controls'|'arena'='controls',source:'off'|'camera'|'synthetic'='off',lastEpoch=controls.epoch;
 let prepareMode:PlayMode='combat',cameraSetupRequested=false;
 let diagnosticSample:Observation|null=null;
-let cameraDeliveryMs:number|null=null;
+let cameraTiming:{epoch:number;resultAt:number;deliveryMs:number;intervalMs:number|null}|null=null;
 let previousPreview:TargetId|null=null,syntheticSeq=0,syntheticAim={x:0,y:0},syntheticLoss=false;const keys=new Set<string>();
 let replayStart:number|null=null,replayCaptured=false,replayResumed=false,replayRecalled=false;
 let qaAim:TargetId|null=null,qaV02Running=false;
@@ -187,13 +199,18 @@ let settingsOpen=false,settingsFocus:HTMLElement|null=null,resultsShown=false;
 const camera=new CameraInput(video,()=>controls.epoch,(s,landmarks)=>{
   const now=performance.now();
   diagnosticSample=s;
-  cameraDeliveryMs=Math.round(now-s.capturedAt);
+  cameraTiming={
+    epoch:s.epoch,
+    resultAt:now,
+    deliveryMs:Math.round(now-s.capturedAt),
+    intervalMs:cameraTiming?.epoch===s.epoch?Math.round(now-cameraTiming.resultAt):null,
+  };
   const accepted=controls.ingest(s,now);
   trackingPreview.observe(s,landmarks,accepted,controls.epoch,controls.recognition);
   if(accepted)updateStartIntents(now);
 },reason=>{
   stopVoice();
-  diagnosticSample=null;cameraDeliveryMs=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();
+  diagnosticSample=null;cameraTiming=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();
 });
 function clearPending(){queuedActions=[];queuedPolicy=null;if(stage==='arena'&&previousPreview&&!controls.inputArmed)sim.events.add(sim.tick,'Deploy / redirect','Cancelled','Control epoch reset',previousPreview);pending=[];previousPreview=null;lastEpoch=controls.epoch;practiceFeedback.clear();if(controls.paused||!controls.inputArmed)sim.stopFire();}
 function logCancellation(detail:string){const command=controls.bindings.pending;if(stage==='arena'&&(command||pending.length)){sim.events.add(sim.tick,command?.type==='RECALL'?'Recall':'Deploy / redirect','Cancelled',detail,command?.type==='INTERCEPT'?command.targetId:null);previousPreview=null;}}
@@ -225,6 +242,7 @@ function cancelCommand(){logCancellation('Explicit cancel');resumeIntent.cancel(
 function resetRound(mode:'combat'|'training'){
   stopVoice();
   inspector?.voiceTranscript.clear();
+  diagnosticSample=null;cameraTiming=null;
   // Retire old input and its events against the old run, never against its replacement.
   controls.restart();clearPending();
   resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode);sim.preferredPolicy=preferredPolicy;commandId=0;
@@ -468,11 +486,14 @@ function loop(frameTime:number){
   el('input-details-summary').textContent='Input details · local and transient';el('input-fresh').textContent=diagnosticHands.some(h=>h.side!=='Left'&&h.side!=='Right')?'No · unknown hand identity; input blocked':readiness.fresh?'Yes · ≤ 200 ms':'No';el('input-open').textContent=readiness.openPosture?'Yes · both Open Palm':'No';
   for(const side of ['Left','Right'] as const){const hand=diagnosticHands.find(h=>h.side===side);el(`input-${side.toLowerCase()}-gesture`).textContent=hand?`${hand.gesture?.category??'Unknown'} · ${hand.gesture?.score.toFixed(2)??'no score'} · ${recognize(hand.gesture,controls.recognition[side])?'recognised':'tracked, gesture uncertain'}`:'Tracking unavailable';}
   el('input-presets').textContent=`Left ${controls.recognition.Left} / Right ${controls.recognition.Right}`;
+  const timing=source==='camera'&&cameraTiming?.epoch===controls.epoch?cameraTiming:null;
+  el('input-capture-to-result').textContent=timing?`${timing.deliveryMs} ms`:'—';
+  el('input-result-interval').textContent=timing?.intervalMs!=null?`${timing.intervalMs} ms`:'—';
   el<HTMLButtonElement>('enter').disabled=!controls.calibrated||renderState!=='ready';
   el<HTMLButtonElement>('train').disabled=!controls.calibrated||renderState!=='ready';
   el('arena-error').hidden=!renderMessage;el('arena-error').textContent=renderMessage;
   el('synthetic-help').hidden=source!=='synthetic'||!el('title-screen').hidden;el('tracking-state').textContent=controls.paused?'PAUSED':controls.needsRearm?'RECOVERY REQUIRED':controls.latest?'TRACKING':'INPUT NEUTRAL';
-  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${(source==='camera'&&diagnosticSample?diagnosticSample.processingMs:controls.processingMs).toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}${source==='camera'&&cameraDeliveryMs!==null?' · capture to result '+cameraDeliveryMs+' ms':''}`;
+  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${(source==='camera'&&diagnosticSample?diagnosticSample.processingMs:controls.processingMs).toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}${timing?' · capture to result '+timing.deliveryMs+' ms':''}`;
   el('health').textContent=String(sim.health);el<HTMLMeterElement>('health-meter').value=sim.health;el('remaining').textContent=`${sim.turrets.filter(t=>t.health>0).length} / ${sim.turrets.length}`;
   el('order-text').textContent=sim.funnels.map(f=>f.id+': '+(f.order.type==='INTERCEPT'?f.order.targetId:'Follow')+(f.blocked?' Blocked':'')).join(' / ');el('order-text').title=sim.funnels.map(f=>f.id+': '+f.status+' / '+f.origin).join(' / ');el('order-message').textContent=sim.groupState+' / '+sim.message;
   el('hit-feedback').textContent=sim.lastHit&&sim.tick-sim.lastHit.tick<90?`${sim.lastHit.team==='funnel'?'Padisarah':'Pilot'} hit ${sim.lastHit.target} · collision confirmed`:'';
@@ -512,10 +533,11 @@ function loop(frameTime:number){
   previousPreview=controls.preview;lastDraw=now;renderCommandReadiness(controls.commandReadiness(now));
   if(stage==='arena'){
     const tracking=source==='camera'&&camera.ready?controls.trackingStatus(now):'';
+    const hasHandInput=controls.handReady('Left',now)||controls.handReady('Right',now);
     const hands=source==='synthetic'?'Keyboard rehearsal · camera off'
       :source==='off'?'Camera off'
       :calibration.pending?'Calibrating'
-      :camera.ready?(controls.paused?'Tracking · arena paused':!controls.inputArmed?'Tracking · open hands to resume':'Tracking')
+      :camera.ready?(controls.paused?'Tracking · arena paused':!controls.inputArmed?'Tracking · open hands to resume':hasHandInput?'Tracking':'No hand input')
       :camera.status;
     inspector?.render(sim,lastWorldAim??sim.position,tracking,hands);
     inspector?.orderQueue?.render(orderQueue.rows(),voiceSupervisor.pending());

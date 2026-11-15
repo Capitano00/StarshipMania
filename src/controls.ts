@@ -19,8 +19,8 @@ export class Controls {
  private presets:{Left:RecognitionPreset;Right:RecognitionPreset}={Left:'Balanced',Right:'Balanced'};
  private moveGain=1;private aimGain=1;private sequence=-1;private consumedSequence=-1;private capturedAt=-Infinity;
  private tracks:Record<Side,HandTrack>={Left:emptyTrack(),Right:emptyTrack()};private armed=false;private readinessIssue='';
- handReady(side:Side,now:number){const t=this.tracks[side];return t.ready&&now>=t.at&&now-t.at<=AGE;}
- trackingStatus(now:number){return (['Left','Right'] as const).map(side=>`${side}: ${this.handReady(side,now)?'ready':this.tracks[side].hand&&now-this.tracks[side].at<=AGE?'confirming identity':'no input'}`).join(' / ');}
+ handReady(side:Side,now:number){const t=this.tracks[side];return this.latest!==null&&t.ready&&now>=t.at&&now-t.at<=AGE;}
+ trackingStatus(now:number){return (['Left','Right'] as const).map(side=>`${side}: ${this.handReady(side,now)?'ready':this.latest&&this.tracks[side].hand&&now-this.tracks[side].at<=AGE?'confirming identity':'no input'}`).join(' / ');}
  get sensitivity(){return {move:this.moveGain,aim:this.aimGain};}
  get recognition(){return {...this.presets};}
  get configuration(){return this.bindings.configuration;}
@@ -67,7 +67,12 @@ export class Controls {
   if(!this.bindings.pending){this.preview=this.visibleTarget=null;this.visibleSince=0;}
  }
  private fail(reason:string){
-  this.lose('Left');this.lose('Right');this.latest=null;this.readinessIssue=reason;
+  this.tracks={Left:emptyTrack(),Right:emptyTrack()};
+  this.clearLiveInput(reason);
+ }
+ private clearLiveInput(reason:string){
+  this.bindings.lose('Left');this.bindings.lose('Right');
+  this.latest=null;this.nomination=this.preview=this.visibleTarget=null;this.visibleSince=0;this.readinessIssue=reason;
  }
  readiness(now:number):ReadinessSnapshot {
   const fresh=!!this.latest&&this.latest.epoch===this.epoch&&Number.isFinite(now)&&now>=this.latest.capturedAt&&now-this.latest.capturedAt<=AGE;
@@ -90,10 +95,14 @@ export class Controls {
   return {x:clamp((hand.palm.x-this.neutral.right.x)/.12*this.aimGain),y:clamp((this.neutral.right.y-hand.palm.y)/.10*this.aimGain)};
  }
  update(now:number,target:TargetId|null):ControlOutput {
-  this.nomination=target;
   this.updateAgeMs=this.latest?now-this.latest.capturedAt:Infinity;
-  if(!this.latest||this.updateAgeMs>AGE||this.updateAgeMs<0){this.fail('Waiting for fresh tracking');return {frame:neutralFrame(),commit:null};}
-  if(!this.inputArmed||!this.neutral)return {frame:neutralFrame(),commit:null};
+  if(this.latest){
+   if(!Number.isFinite(this.updateAgeMs)||this.updateAgeMs<0)this.fail('Waiting for fresh tracking');
+   // An in-flight capture can still maintain identity, but an expired sample grants no input or gesture credit.
+   else if(this.updateAgeMs>AGE)this.clearLiveInput('Waiting for fresh tracking');
+  }
+  if(!this.latest||!this.inputArmed||!this.neutral)return {frame:neutralFrame(),commit:null};
+  this.nomination=target;
   const left=this.handReady('Left',now)?this.tracks.Left.hand:null,right=this.handReady('Right',now)?this.tracks.Right.hand:null;
   this.bindings.nominationChanged(target);
   if(this.preview!==target){this.preview=null;this.visibleTarget=null;this.visibleSince=0;}

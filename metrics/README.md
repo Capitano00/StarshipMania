@@ -13,7 +13,7 @@ That builds the game, runs every test and writes `public/metrics.json` and `dist
 | `comparisons.json` | Each before/after comparison shown under **Before & after** | Whoever owns the change |
 | `snapshots/*.json` | Build, bundle and test numbers for one version of the game | `npm run metrics -- --snapshot …` |
 | `performance.json` | Benchmark runs: frame rate, load time, memory | Whoever runs the benchmark |
-| `baseline-failures.json` | The 71 test failures inherited from ProjectZero v0.4.3 | Nobody, unless an inherited failure is fixed |
+| `baseline-failures.json` | Test failures inherited from ProjectZero v0.4.3 that still fail (71 at import; the team has since fixed all but 4) | Whoever fixes one: remove it, so a fixed test that breaks again counts as new |
 
 ## Comparing your change (voice agent, supervisor agent, or anything else)
 

@@ -21,7 +21,7 @@ const num=(value:number)=>value.toLocaleString('en',{maximumFractionDigits:1});
 const kB=(bytes:number)=>`${num(Math.round(bytes/102.4)/10)} kB`;
 const fmt=(value:number,unit:string)=>unit==='%'?`${num(value)}%`:unit.startsWith('/')?num(value):unit?`${num(value)} ${unit}`:num(value);
 const pct=(value:number,max:number)=>max?Math.max(0,Math.min(100,value/max*100)):0;
-const header=`<header><a class="brand" href="/">P<span>◇</span>Z <small>PROJECTZERO</small></a><span class="edition">PROJECT METRICS</span><a class="back-link" href="/">← Back to game</a></header>`;
+const header=`<header><a class="brand" href="/">Starship<span>Mania</span></a><span class="edition">PROJECT METRICS</span><a class="back-link" href="/">← Back to game</a></header>`;
 const section=(id:string,eyebrow:string,title:string,body:string)=>`<section class="m-section reveal" id="${id}" aria-labelledby="${id}-title"><div class="eyebrow">${eyebrow}</div><h2 id="${id}-title">${title}</h2>${body}</section>`;
 const verdictText:Record<Row['verdict'],string>={better:'▲ Better',worse:'▼ Worse',same:'No change',neutral:'Changed',new:'✦ New',pending:'Awaiting'};
 const pill=(verdict:Row['verdict'])=>`<span class="verdict ${verdict}">${verdictText[verdict]}</span>`;
@@ -327,7 +327,7 @@ function wireRounds(ctx:Ctx){
 function render(m:Metrics){
   const ctx:Ctx={comparisons:m.comparisons??[],snapshots:m.snapshots??[],runs:m.performance.runs,bench:m.bench};
   const nav=[['advantage','AI advantage'],['agent','Agent & model'],['gameplay','Gameplay'],['engineering','Engineering'],['performance','Performance'],['tests','Tests'],['build','Build']].map(([id,label])=>`<a href="#${id}">${label}</a>`).join('');
-  app.innerHTML=`${header}<main class="metrics"><div class="m-intro"><div class="eyebrow">PROJECTZERO v${esc(m.version)} · ${esc(new Date(m.generatedAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}))}</div><h1>Project metrics</h1><nav class="m-nav" aria-label="Sections">${nav}</nav></div>
+  app.innerHTML=`${header}<main class="metrics"><div class="m-intro"><div class="eyebrow">STARSHIPMANIA · BUILT ON PROJECTZERO v${esc(m.version)} · ${esc(new Date(m.generatedAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}))}</div><h1>Project metrics</h1><nav class="m-nav" aria-label="Sections">${nav}</nav></div>
    ${advantageSection(m)}${agentSection(ctx)}${gameplaySection(ctx)}${engineeringSection(ctx)}${performanceSection(m.performance.runs)}${testsSection(m.tests)}${buildSection(m)}</main>`;
   wireTooltip();wireRounds(ctx);wireLatency();wireAgentSpeed();
   // Sections are drawn after metrics.json loads, so honour a #section link now that the anchor exists.

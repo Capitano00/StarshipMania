@@ -81,7 +81,8 @@ describe('metrics page wiring',()=>{
     expect(read('src/metrics-page.ts')).not.toMatch(/Recent commits|Uncommitted|repo\./);
   });
   it('records each known baseline failure exactly once',()=>{
-    const {failures}=JSON.parse(read('metrics/baseline-failures.json')) as {failures:string[]};
-    expect(failures).toHaveLength(71);expect(new Set(failures).size).toBe(71);
+    // 71 came with ProjectZero; fixed ones are removed so they count as new if they break again.
+    const {failures,fixedSinceImport}=JSON.parse(read('metrics/baseline-failures.json')) as {failures:string[];fixedSinceImport:number};
+    expect(new Set(failures).size).toBe(failures.length);expect(failures.length+fixedSinceImport).toBe(71);
   });
 });

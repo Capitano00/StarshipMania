@@ -2,10 +2,11 @@ import {readFileSync} from 'node:fs';
 import {expect,it} from 'vitest';
 const source=readFileSync(new URL('../src/main.ts',import.meta.url),'utf8');
 const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
-it('names the English Padisarah system while preserving internal identifiers',()=>{
-  expect(source).toContain('PROJECTZERO');expect(source).toContain('<strong class="system-brand">Padisarah</strong>');
-  expect(source).toContain('Padisarah · your independent-unit control system.');expect(source).toContain('PADISARAH · UNIT ORDER');
-  expect(readFileSync(new URL('../index.html',import.meta.url),'utf8')).toContain('<title>ProjectZero · First Playable</title>');
+it('brands the StarshipMania title and keeps the Padisarah unit identity',()=>{
+  const entry=readFileSync(new URL('../src/player-interface.ts',import.meta.url),'utf8');
+  expect(entry).toContain('Starship<span>Mania</span>');
+  expect(source).toContain('PADISARAH · UNIT ORDER');
+  expect(readFileSync(new URL('../index.html',import.meta.url),'utf8')).toContain('<title>StarshipMania</title>');
 });
 it('uses scoped identity tokens without recolouring semantic feedback',()=>{
   expect(css).toContain('--system-accent:#CBB7F4;--system-ink:#F5F1FA');

@@ -16,13 +16,15 @@ function setup(workers?: typeof requestDroneWorkers) {
     payload: {type: 'SQUAD', assignments: assignments.map(({unit, target}) => ({unit, targetId: target}))},
   }));
   const notify = vi.fn();
-  const supervisor = createVoiceSupervisor({current: () => sim, queue, submit, notify, workers});
+  const submitRecall = vi.fn((simulation: Simulation, unit: OrderAssignment['unit']) =>
+    simulation.accept(simulation.envelope({type: 'RECALL'}, 'local-approved-proposal', `cmd-${commandId++}`, unit)));
+  const supervisor = createVoiceSupervisor({current: () => sim, queue, submit, submitRecall, notify, workers});
   const direct = (unit: OrderAssignment['unit'], target: OrderAssignment['target'], timing: 'now' | 'when_feasible' = 'now') =>
     supervisor.call('plan_drone_assignment', {intent: 'direct', timing, unit, target, state_token: stateToken(sim)});
   const guided = () => supervisor.call('plan_drone_assignment', {intent: 'far', timing: 'now', state_token: stateToken(sim)});
   const change = (operation: 'promote' | 'cancel', id: string) =>
     supervisor.call('request_queue_change', {id, operation, state_token: stateToken(sim)});
-  return {sim, queue, submit, notify, supervisor, direct, guided, change};
+  return {sim, queue, submit, submitRecall, notify, supervisor, direct, guided, change};
 }
 
 describe('voice supervisor pilot approval', () => {
@@ -112,5 +114,39 @@ describe('voice supervisor pilot approval', () => {
     supervisor.confirm();
     expect(submit).not.toHaveBeenCalled();
     expect(sim.funnels.map(drone => drone.order.type)).toEqual(['RECALL', 'RECALL']);
+  });
+
+  it('proposes the nearest armed target in defend mode and shows the existing assignment', async () => {
+    const {sim, supervisor} = setup();
+    expect(sim.accept(sim.envelope({type: 'INTERCEPT', targetId: 'T3'}, 'local-approved-proposal', 'cmd-1', 'U2'))).toBe(true);
+    const result = await supervisor.call('plan_drone_assignment', {intent: 'defend', timing: 'now', state_token: stateToken(sim), unit: 'U2'});
+    expect(result).toMatchObject({ok: true, current_task: 'U2 is assigned to T3', assignments: [{unit: 'U2', target: 'T1'}]});
+    supervisor.confirm();
+    expect(sim.funnels[1].order).toEqual({type: 'INTERCEPT', targetId: 'T1'});
+  });
+
+  it('rejects the entire squad proposal if a target is no longer alive at confirmation', async () => {
+    const {sim, supervisor, submit} = setup();
+    const input = {intent: 'squad', timing: 'now', state_token: stateToken(sim), u1_target: 'T1', u2_target: 'T3'};
+    expect(await supervisor.call('plan_drone_assignment', {...input, u2_target: 'T1'})).toMatchObject({ok: false});
+    expect(await supervisor.call('plan_drone_assignment', input)).toMatchObject({ok: true, assignments: [{unit: 'U1', target: 'T1'}, {unit: 'U2', target: 'T3'}]});
+    sim.turrets.find(turret => turret.id === 'T3')!.health = 0;
+    supervisor.confirm();
+    expect(submit).not.toHaveBeenCalled();
+    expect(sim.funnels.map(drone => drone.order.type)).toEqual(['RECALL', 'RECALL']);
+  });
+
+  it('changes only the named drone after an approved single-unit Recall', async () => {
+    const {sim, supervisor, submitRecall} = setup();
+    const input = {intent: 'squad', timing: 'now', state_token: stateToken(sim), u1_target: 'T1', u2_target: 'T3'};
+    expect(await supervisor.call('plan_drone_assignment', input)).toMatchObject({ok: true});
+    supervisor.confirm();
+    expect(sim.funnels.map(drone => drone.order)).toEqual([{type: 'INTERCEPT', targetId: 'T1'}, {type: 'INTERCEPT', targetId: 'T3'}]);
+
+    const recall = {unit: 'U1', state_token: stateToken(sim)};
+    expect(await supervisor.call('request_unit_recall', recall)).toMatchObject({ok: true, unit: 'U1', current_task: 'U1 is assigned to T1'});
+    expect(submitRecall).not.toHaveBeenCalled();
+    supervisor.confirm();
+    expect(sim.funnels.map(drone => drone.order)).toEqual([{type: 'RECALL'}, {type: 'INTERCEPT', targetId: 'T3'}]);
   });
 });

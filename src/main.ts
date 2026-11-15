@@ -93,10 +93,40 @@ const orderQueue=new OrderQueue();
 orderQueue.reset(sim.runId);
 function approveVoiceAssignment(current:Simulation,assignments:OrderAssignment[],reason:string){
   const proposal=agentController.submit(current,{kind:'squad',assignments,reason},AgentController.basis(current),{requireApproval:true});
-  return proposal.ok&&agentController.approve(proposal.proposalId,current).ok;
+  return proposal.ok&&agentController.approve(proposal.proposalId,current).ok ? proposal.proposalId : null;
 }
-const voiceSupervisor=createVoiceSupervisor({current:()=>gameplayActive()?sim:null,queue:orderQueue,submit:approveVoiceAssignment,
-  notify:message=>{sim.events.add(sim.tick,'Voice order','Pilot decision',message);}});
+type VoiceReceipt = {summary: string; recallUnit?: OrderAssignment['unit']};
+const voiceReceipts = new Map<string, VoiceReceipt>();
+const voiceSupervisor=createVoiceSupervisor({
+  current:()=>gameplayActive()?sim:null,
+  queue:orderQueue,
+  submit:(current,assignments,reason)=>{
+    const id=approveVoiceAssignment(current,assignments,reason);
+    if(!id)return false;
+    voiceReceipts.set(id,{summary:assignments.map(({unit,target})=>`${unit} to ${target}`).join(' · ')});
+    return true;
+  },
+  submitRecall:(current,unit,reason)=>{
+    const proposal=agentController.submit(current,{kind:'recall',unit,reason},AgentController.basis(current),{requireApproval:true});
+    if(!proposal.ok||!agentController.approve(proposal.proposalId,current).ok)return false;
+    voiceReceipts.set(proposal.proposalId,{summary:`Recall ${unit}`,recallUnit:unit});
+    return true;
+  },
+  notify:message=>{sim.events.add(sim.tick,'Voice order','Pilot decision',message);},
+});
+function recordVoiceResults(current:Simulation){
+  for(const [id,receipt] of voiceReceipts){
+    voiceReceipts.delete(id);
+    const commandId=agentController.proposal(id)?.commandId;
+    const result=commandId ? current.commandLog.find(command=>command.commandId===commandId) : undefined;
+    if(result?.outcome==='accepted'){
+      current.events.add(current.tick,'Voice order','Accepted',receipt.summary);
+      if(receipt.recallUnit)orderQueue.discardImpossible(order=>order.assignments.some(a=>a.unit===receipt.recallUnit));
+    }else{
+      current.events.add(current.tick,'Voice order','Rejected',result?.reason??'Order expired before execution.');
+    }
+  }
+}
 function clearWaitingOrders(){
   voiceSupervisor.clear();
   orderQueue.discardImpossible(()=>true);
@@ -178,6 +208,7 @@ function resetRound(mode:'combat'|'training'){
   controls.restart();clearPending();
   resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode);sim.preferredPolicy=preferredPolicy;commandId=0;
   orderQueue.reset(sim.runId);
+  voiceReceipts.clear();
   keys.clear();qaMissingHands.clear();syntheticAim={x:0,y:0};syntheticLoss=false;clock.reset();resultsShown=false;
 }
 function startRound(mode:'combat'|'training'){
@@ -365,6 +396,7 @@ function loop(now:number){
   }
   const recalls=sim.recalls;
   sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  if(voiceReceipts.size)recordVoiceResults(sim);
   if(sim.recalls>recalls)clearWaitingOrders();
   // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
   if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
@@ -582,9 +614,16 @@ const voiceRecall=createVoiceRecall(() => recall('local-voice-recall'), (state, 
   renderVoiceStatus();voiceHud?.status(state,detail);
 }, event=>{inspector?.voiceTranscript.update(event);voiceHud?.event(event);},
 ()=> {
-  const tools=getSupervisorTools()?.adapters.clientTools();
+  const runtime=getSupervisorTools();
+  const tools=runtime?.adapters.clientTools();
   return {
-    ...(tools?{get_game_state:tools.get_game_state,get_recent_events:tools.get_recent_events,get_task_status:tools.get_task_status}:{}),
+    ...(runtime&&tools?{
+      get_game_state:(input:unknown)=>{
+        const result=runtime.call('get_game_state',input);
+        return JSON.stringify(result.ok?{...result,authority:'Voice proposals require pilot approval in Orders. A fresh emergency Recall is immediate.'}:result);
+      },
+      get_recent_events:tools.get_recent_events,get_task_status:tools.get_task_status,
+    }:{}),
     ...voiceSupervisor.clientTools(),
   };
 });

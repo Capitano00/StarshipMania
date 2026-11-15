@@ -25,12 +25,16 @@ On a voice-enabled preview, resume the arena and select **Start voice**. ElevenL
 | Try saying | What happens |
 | --- | --- |
 | “Recall drones” | Recalls both drones immediately. R does the same. |
+| “Scout ahead” | Reports nearby armed threats and available drones. |
+| “Recall U1” | Proposes returning U1 to escort and cancelling waiting orders that involve it. |
+| “U2, defend me” | Proposes sending U2 to the nearest active armed turret. |
 | “Send U2 to T3” | Proposes a specific assignment. |
+| “Send U1 to T1 and U2 to T3” | Proposes both assignments as a single order. |
 | “Take the far turret” | Asks the two drone workers for a suggestion. “Take the near turret” also works. |
 | “Send U2 to T3 when feasible” | Offers to wait until the assignment becomes possible. |
 | “Promote order-1” or “Cancel order-1” | Proposes a change to a waiting order. Use the ID shown in **Orders**. |
 
-Approve assignments and queue changes in **Orders**. Those commands require the configured supervisor. See the [voice supervisor setup](src/agent/README.md#elevenlabs-voice-supervisor).
+Approve assignments, single-drone Recall and queue changes in **Orders**. These commands and Scout use the configured supervisor. See the [voice supervisor setup](src/agent/README.md#elevenlabs-voice-supervisor).
 
 ## Optional webcam on an independently authorized machine
 

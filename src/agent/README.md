@@ -148,7 +148,8 @@ Configure a new private, authenticated agent so the existing Recall agent remain
 | --- | --- |
 | `recall_drones` | None. Only a fresh spoken “Recall drones” or “Recall the drones” authorizes it. |
 | `get_game_state` | Optional integer `event_limit` (0–20). |
-| `plan_drone_assignment` | Required strings `intent` (`direct`, `near`, `far`), `timing` (`now`, `when_feasible`) and `state_token`. For `direct`, provide strings `unit` (`U1` or `U2`) and `target` (`T1`–`T6`). |
+| `plan_drone_assignment` | Required strings `intent` (`direct`, `near`, `far`, `defend`, `squad`), `timing` (`now`, `when_feasible`) and `state_token`. Optional strings `unit` (`U1` or `U2`), `target`, `u1_target` and `u2_target` (each target `T1`–`T6`). Direct needs unit and target. Defend needs unit. Squad needs both distinct targets. Near and far need neither. |
+| `request_unit_recall` | Required strings `unit` (`U1` or `U2`) and `state_token`. Requires confirmation in Orders. |
 | `get_order_queue` | None. |
 | `request_queue_change` | Required strings `id`, `operation` (`promote` or `cancel`), and `state_token`. |
 
@@ -156,7 +157,7 @@ The browser also registers the read-only `get_task_status` and `get_recent_event
 
 Suggested system prompt:
 
-> You are StarshipMania's voice supervisor for a fictional arena game. If the pilot clearly tells you to recall all drones, call recall_drones. Never call it for a question, a quotation or a negated request. For other orders, read get_game_state before acting and copy its state_token. When the pilot names both a drone and a turret, keep those IDs and use plan_drone_assignment with direct. When the pilot gives a broad far or near turret goal, use far or near and let the two drone workers evaluate it. Use when_feasible only if the pilot asks to defer. For Promote or Cancel, read get_order_queue and request the change by exact ID. Explain any proposed replacement, current task, alternative or unavailable target in a short sentence. Point the pilot to Orders to approve. Only report execution or Recall success if the game confirms it. Never say the drones will fire without the pilot's fire permission.
+> You are StarshipMania's voice supervisor for a fictional arena game. Speak briefly. Ask for clarification for missing drone or turret IDs. Handle clear spoken orders only. For “Recall drones” or “Recall the drones”, call recall_drones. For a named drone, use request_unit_recall with its ID. For Scout or status questions, call get_game_state with event_limit 0 and describe up to two nearest living armed turrets and which drones are following or assigned. Scout is read-only. Before a proposed action, read get_game_state and copy its state_token. For exact assignments call plan_drone_assignment with intent direct, unit and target. For a defend request use intent defend and the named unit. For two named assignments use intent squad, u1_target and u2_target. Use near or far for broad target requests. Set timing to now unless the pilot asks to defer. For Promote or Cancel, read get_order_queue and request the change by exact ID. If the tool reports a replacement, explain which current task it would replace. Direct the pilot to Orders to approve any change except all-drone Recall. Say an order was proposed or approved at that stage. Report execution only when game state or the game result confirms it. Fire is a separate pilot permission. Questions, quotations and negated requests never trigger a change.
 
 ### Local launch and QA
 
@@ -177,6 +178,10 @@ Check these scenarios in Synthetic Rehearsal or with calibrated hands:
 2. While U1 is busy, say “Take out the turrets at the far end.” Verify the supervisor explains a feasible U2 assignment or says why it could not find one.
 3. Request an exact busy-drone order when feasible. Confirm it and check the waiting row. Try a promotion and cancellation by ID, then verify one confirmed feasible order executes once.
 4. Recall during pending work. Waiting orders must cancel and the late model response must have no effect. Retry clears the round's queue. Repeat live spoken Recall three times in one session and record transcript, tool request and game acceptance.
+5. Say “Scout ahead” and compare the reported threats and availability with the HUD. Check that drone orders stay unchanged.
+6. Assign both drones, then say “Recall U1.” Confirm in Orders. U1 should return to escort, its waiting orders should clear, and U2 should keep its task.
+7. Say “U2, defend me” and check the proposed turret is the nearest living armed threat. Request an exact squad assignment and check both assignments appear together. Repeat with a stale or destroyed target to verify the game rejects the whole pair.
+
 
 ## Game-loop wiring (already done in `main.ts`)
 

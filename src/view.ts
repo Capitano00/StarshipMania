@@ -4,6 +4,7 @@ import {actorDefinitions,type Simulation} from './simulation';
 import type {TargetId,Vec2} from './contracts';
 import {barriers} from './cover';
 import {nominate,type ProjectedTarget} from './targeting';
+import './target-labels.css';
 const metal=(color:number,emissive=0)=>new THREE.MeshStandardMaterial({color,roughness:.6,metalness:.45,emissive,emissiveIntensity:.5});
 const box=(w:number,h:number,d:number,color:number,x=0,y=0,z=0)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),metal(color));mesh.position.set(x,y,z);return mesh;};
 const ring=(radius:number,width:number,color:number)=>{const mesh=new THREE.Mesh(new THREE.TorusGeometry(radius,width,8,40),new THREE.MeshBasicMaterial({color}));mesh.rotation.x=-Math.PI/2;mesh.visible=false;return mesh;};
@@ -11,6 +12,10 @@ export class ArenaView {
  readonly renderer:THREE.WebGLRenderer;readonly scene=new THREE.Scene();readonly camera=new THREE.PerspectiveCamera(52,1,.1,200);
  private mech=new THREE.Group();private legs:THREE.Group[]=[];private mechGun:THREE.Mesh;
  private turrets=new Map<TargetId,THREE.Group>();private turretHeads=new Map<TargetId,THREE.Group>();
+ private targetLabelLayer = document.createElement('div');
+ private targetLabels = new Map<TargetId, HTMLSpanElement>();
+ private targetLabelPoint = new THREE.Vector3();
+ private visibleLabelTargets = new Set<TargetId>();
  private funnels=new Map<string,THREE.Group>();private unitRings=new Map<string,THREE.Mesh>();private shots=new Map<number,THREE.Mesh>();private walls:THREE.Mesh[]=[];
  private ray=new THREE.Raycaster();private ground=new THREE.Plane(new THREE.Vector3(0,1,0),-1);
  private previewRing=ring(1.65,.055,0xf4d577);private assignedRing=ring(1.9,.12,0xcbb7f4);private aimedRing=ring(1.4,.035,0xf5f1fa);
@@ -39,7 +44,18 @@ export class ArenaView {
    const base=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.4,.5,8),metal(0x4b4352));base.position.y=.25;group.add(base);
    const head=new THREE.Group();head.position.y=.9;head.add(box(1.6,1.1,1.4,armed?0xa17568:0x668f96),box(.95,.18,1.1,armed?0xdeb899:0xcbb7f4,0,.62,0));if(armed)head.add(box(.35,.35,1.5,0x403746,0,.05,1));
    for(const side of [-1,1])head.add(box(.11,.18,.3,0xffc77c,side*.6,.1,.75));group.add(head);this.turretHeads.set(id,head);this.turrets.set(id,group);this.scene.add(group);
+   const label = document.createElement('span');
+   label.className = 'arena-target-label';
+   label.textContent = id;
+   label.hidden = true;
+   this.targetLabels.set(id, label);
+   this.targetLabelLayer.append(label);
   }
+  this.targetLabelLayer.className = 'arena-target-labels';
+  this.targetLabelLayer.setAttribute('role', 'group');
+  this.targetLabelLayer.setAttribute('aria-label', 'Visible arena targets');
+  canvas.after(this.targetLabelLayer);
+  canvas.addEventListener('webglcontextlost', () => { this.targetLabelLayer.hidden = true; });
   this.line=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineDashedMaterial({color:0xf4d577,dashSize:.45,gapSize:.3}));this.line.visible=false;
   this.scene.add(this.previewRing,this.assignedRing,this.aimedRing,this.line,this.impact);window.addEventListener('resize',()=>this.resize());this.resize();
  }
@@ -54,6 +70,21 @@ export class ArenaView {
  private sync(sim:Simulation){this.mech.position.set(sim.position.x,0,sim.position.y);for(const target of sim.turrets){const mesh=this.turrets.get(target.id)!;mesh.visible=target.health>0;mesh.position.set(target.position.x,0,target.position.y);}this.scene.updateMatrixWorld(true);}
  projectWorld(point:Vec2,sim:Simulation){this.setCamera(sim);const p=new THREE.Vector3(point.x,1,point.y).project(this.camera);return {x:p.x/.88,y:p.y/.72};}
  projectFixtureTarget(id:TargetId,sim:Simulation){return this.projectWorld(sim.turrets.find(t=>t.id===id)!.position,sim);}
+ private updateTargetLabels(sim: Simulation, aimed: TargetId | null) {
+  this.targetLabelLayer.hidden = false;
+  const point = this.targetLabelPoint;
+  for (const {id, position, health} of sim.turrets) {
+   const label = this.targetLabels.get(id)!;
+   // The existing reticle callout already includes the aimed target's ID and status.
+   const visible = id !== aimed && health > 0 && this.visibleLabelTargets.has(id);
+   if (visible) point.set(position.x, 1.6, position.y).project(this.camera);
+   const inFrame = visible && Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1 && Math.abs(point.z) <= 1;
+   label.hidden = !inFrame;
+   if (!inFrame) continue;
+   label.style.setProperty('--target-x', `${(point.x + 1) * 50}%`);
+   label.style.setProperty('--target-y', `${(1 - point.y) * 50}%`);
+  }
+ }
  aim(pointer:Vec2,sim:Simulation):{point:Vec2;target:TargetId|null}{
   this.setCamera(sim);this.sync(sim);this.ray.setFromCamera(new THREE.Vector2(pointer.x*.88,pointer.y*.72),this.camera);
   const aim=new THREE.Vector3();this.ray.ray.intersectPlane(this.ground,aim);
@@ -61,12 +92,15 @@ export class ArenaView {
   let direct:TargetId|null=null;
   if(hits[0]){let object:THREE.Object3D|null=hits[0].object;while(object&&!object.userData.targetId&&!object.userData.cover)object=object.parent;direct=object?.userData.targetId??null;}
   const width=this.canvas.clientWidth,height=this.canvas.clientHeight,bounds:ProjectedTarget[]=[];
+  this.visibleLabelTargets.clear();
   for(const target of sim.turrets)if(target.health>0){
    const mesh=this.turrets.get(target.id)!,box=new THREE.Box3().setFromObject(mesh),points:THREE.Vector3[]=[];
    for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z])points.push(new THREE.Vector3(x,y,z).project(this.camera));
    const center=new THREE.Vector3(target.position.x,1,target.position.y),delta=center.clone().sub(this.camera.position),distance=delta.length();
    this.ray.set(this.camera.position,delta.normalize());const obstruction=this.ray.intersectObjects(this.walls,false)[0];
-   bounds.push({id:target.id,left:Math.min(...points.map(p=>(p.x+1)*width/2)),right:Math.max(...points.map(p=>(p.x+1)*width/2)),top:Math.min(...points.map(p=>(1-p.y)*height/2)),bottom:Math.max(...points.map(p=>(1-p.y)*height/2)),visible:points.every(p=>p.z>=-1&&p.z<=1)&&(direct===target.id||!obstruction||obstruction.distance>=distance)});
+   const visible=points.every(p=>p.z>=-1&&p.z<=1)&&(direct===target.id||!obstruction||obstruction.distance>=distance);
+   if(visible)this.visibleLabelTargets.add(target.id);
+   bounds.push({id:target.id,left:Math.min(...points.map(p=>(p.x+1)*width/2)),right:Math.max(...points.map(p=>(p.x+1)*width/2)),top:Math.min(...points.map(p=>(1-p.y)*height/2)),bottom:Math.max(...points.map(p=>(1-p.y)*height/2)),visible});
   }
   this.candidate=nominate({x:(pointer.x*.88+1)*width/2,y:(1-pointer.y*.72)*height/2},bounds,this.drawnRun===sim.runId?this.candidate:null,direct);
   return {point:{x:Math.max(-arenaBounds.aimLimit,Math.min(arenaBounds.aimLimit,aim.x)),y:Math.max(-arenaBounds.aimLimit,Math.min(arenaBounds.aimLimit,aim.z))},target:this.candidate};
@@ -85,5 +119,6 @@ export class ArenaView {
   this.line.visible=!!preview;if(preview){const target=sim.turrets.find(t=>t.id===preview)!;this.line.geometry.dispose();this.line.geometry=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(sim.position.x,.2,sim.position.y),new THREE.Vector3(target.position.x,.2,target.position.y)]);this.line.computeLineDistances();}
   this.impact.visible=!!sim.lastImpact&&sim.tick-sim.lastImpact.tick<10;if(this.impact.visible){this.impact.position.set(sim.lastImpact!.position.x,1,sim.lastImpact!.position.y);this.impact.scale.setScalar(1+(sim.tick-sim.lastImpact!.tick)*.12);}
   this.renderer.render(this.scene,this.camera);
+  this.updateTargetLabels(sim, aimed);
  }
 }

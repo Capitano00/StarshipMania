@@ -1,0 +1,22 @@
+.arena-target-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.arena-target-label {
+  position: absolute;
+  top: max(24px, var(--target-y));
+  left: clamp(16px, var(--target-x), calc(100% - 16px));
+  transform: translate(-50%, calc(-100% - 3px));
+  padding: 2px 5px;
+  border: 1px solid #c1947e;
+  border-radius: 3px;
+  background: #0a1622ed;
+  color: #f7e8de;
+  font: 700 12px/1.2 var(--hud-mono, monospace);
+  letter-spacing: .05em;
+  white-space: nowrap;
+}

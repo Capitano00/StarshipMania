@@ -44,9 +44,12 @@ body:has(#setup:not([hidden])) #app > footer { display: none; }
 #setup .prepare-advanced { margin-top: 12px; }
 #arena-objective {
   position: absolute;
-  top: 10px;
-  left: 12px;
-  z-index: 1;
+  top: 60px;
+  left: 50%;
+  z-index: 7;
+  transform: translateX(-50%);
+  max-width: min(48vw, 460px);
+  text-align: center;
   margin: 0;
   padding: 6px 9px;
   border: 1px solid #41586b;

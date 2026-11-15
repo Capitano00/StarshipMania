@@ -12,7 +12,7 @@ With Node 24 and npm, from this directory:
 
 Open http://127.0.0.1:4180/. The strict loopback preview applies the document and worker security policy. Stop it with Ctrl+C. The package installation needs registry access or a populated npm cache; rehearsal runs locally.
 
-1. Choose **Play**, then **Play with keyboard**. The game starts after a brief countdown. Move with WASD, aim with the arrow keys, fire with J, deploy with K, and recall with R. Hold the deploy key over a visible target until the order takes effect.
+1. Choose **Play**, then **Play with keyboard**. The game starts after a brief countdown. Move with WASD, aim with the arrow keys, use J for mech fire, H for drone fire, K to deploy, and R to recall. Hold K over a visible target until the order takes effect.
 2. Choose **Training** to practise deployments, firing and Recall against indestructible targets with no incoming damage. **Control test and help** on Prepare offers a separate input test and command reference.
 3. Press Space to pause or resume. Retry preserves your setup and resets the round. Fire at Will starts off.
 

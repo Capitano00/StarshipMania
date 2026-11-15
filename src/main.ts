@@ -4,7 +4,7 @@ let lastWorldAim:{x:number;y:number}|null=null,lastAimRun='',lastAimEpoch=-1;
 let inspector:ReturnType<typeof installInspector>|null=null;
 import './style.css';
 import './player-interface.css';
-import {prepareIntro,titleScreen,voiceCommandGuide,type PlayMode} from './player-interface';
+import {keyboardTrainingPrompt,prepareIntro,titleScreen,voiceCommandGuide,type PlayMode} from './player-interface';
 // StarshipMania tactical HUD + arena effects (presentation only; `?classic` restores the original look).
 import {ArenaFx} from './fx/arena-fx';
 import {mountHud,type HudHandle} from './hud/hud';
@@ -35,7 +35,7 @@ app.innerHTML=`
 <header><span class="brand">Starship<span>Mania</span></span><div class="privacy"><i></i><span id="privacy-mode">CAMERA AND MIC OFF</span></div></header>
 <main>${titleScreen}<section id="setup" class="setup" aria-labelledby="prepare-heading" hidden>${prepareIntro}
 <div class="prepare-choices"><button id="quick-keyboard" class="primary">Play with keyboard</button><button id="activate">Activate webcam</button></div>
-<p class="prepare-choice-note">Use WASD to move, arrow keys to aim, J to fire, K to deploy and R to recall. Your webcam is optional and processes images on this device.</p>
+<p class="prepare-choice-note">WASD moves, arrow keys aim, J fires the mech, H fires assigned drones, K deploys and R recalls. Your webcam is optional and processes images on this device.</p>
 <p id="arena-error" role="alert" hidden></p>
 <div id="prepare-launch" class="prepare-launch" hidden><p>Controls ready.</p><button id="enter" class="primary" disabled>Enter arena</button><button id="train" class="primary" disabled hidden>Start training</button></div>
 <div id="prepare-camera" class="setup-grid" hidden><article id="prepare-camera-feed" class="card"><h2>Hand tracking</h2><div id="source-status" class="status" role="status">Camera off</div><div id="camera-actions" class="buttons"></div><div id="tracking-home"><aside id="tracking-preview" class="tracking-preview" hidden><div class="tracking-heading"><strong>Mirrored camera</strong><button id="toggle-camera-preview" hidden>Show camera preview</button></div><canvas id="camera-preview" width="320" height="240" aria-label="Mirrored camera view with detected hand landmarks"></canvas><div id="camera-feedback" role="status" aria-live="polite">Camera off</div><div id="camera-fire" class="fire-status" role="status" aria-live="polite">Blocked · camera off</div><p class="tracking-legend">Check that L and R follow your left and right hands. Amber ? means uncertain.</p></aside></div></article>
@@ -416,7 +416,8 @@ function loop(now:number){
   el('health').textContent=String(sim.health);el<HTMLMeterElement>('health-meter').value=sim.health;el('remaining').textContent=`${sim.turrets.filter(t=>t.health>0).length} / ${sim.turrets.length}`;
   el('order-text').textContent=sim.funnels.map(f=>f.id+': '+(f.order.type==='INTERCEPT'?f.order.targetId:'Follow')+(f.blocked?' Blocked':'')).join(' / ');el('order-text').title=sim.funnels.map(f=>f.id+': '+f.status+' / '+f.origin).join(' / ');el('order-message').textContent=sim.groupState+' / '+sim.message;
   el('hit-feedback').textContent=sim.lastHit&&sim.tick-sim.lastHit.tick<90?`${sim.lastHit.team==='funnel'?'Padisarah':'Pilot'} hit ${sim.lastHit.target} · collision confirmed`:'';
-  el('training-panel').hidden=stage!=='arena'||sim.mode!=='training';el('training-step').textContent=sim.trainingInstruction+([0,2].includes(sim.trainingStep)?' '+actionLabel('deploy'):sim.trainingStep===1?' '+(session.autofire?'AUTO FIRE ON':actionLabel('padisarahFire')):sim.trainingStep===3?' '+actionLabel('recall'):'');
+  el('training-panel').hidden=stage!=='arena'||sim.mode!=='training';
+  el('training-step').textContent=source==='synthetic'?keyboardTrainingPrompt(sim.trainingStep,session.autofire):sim.trainingInstruction+([0,2].includes(sim.trainingStep)?' '+actionLabel('deploy'):sim.trainingStep===1?' '+(session.autofire?'AUTO FIRE ON':actionLabel('padisarahFire')):sim.trainingStep===3?' '+actionLabel('recall'):'');
   el('arena-title').textContent=sim.mode==='training'?'Practise deployment. No combat damage.':'Clear all six targets.';
   objective.hidden=sim.mode==='training'||sim.outcome!=='playing';
   el('training-help').textContent=controls.paused?(sim.trainingStep===5?'Repeat practice or enter combat when ready.':`Paused · ${resumeIntent.message(now)||controls.reason} · choose Resume when ready.`):sim.message;

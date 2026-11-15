@@ -1,5 +1,18 @@
 export type PlayMode = 'combat' | 'training';
 
+const keyboardTrainingSteps = [
+  '1 / 5 · Aim at T1 with the arrow keys, then hold K to deploy.',
+  '2 / 5 · Hold H until a drone hits T1.',
+  '3 / 5 · Release K, aim at T2, then hold K to redirect.',
+  '4 / 5 · Press R to recall both drones.',
+  '5 / 5 · Wait for both drones to return.',
+  'Training complete · deployment, drone fire, redirection and recall confirmed.',
+];
+
+export function keyboardTrainingPrompt(step: number, autofire: boolean) {
+  return autofire && step === 1 ? '2 / 5 · Wait for your assigned drones to hit T1.' : keyboardTrainingSteps[step];
+}
+
 export const titleScreen = `
   <section id="title-screen" aria-labelledby="title-heading">
     <div class="title-content">

@@ -87,11 +87,11 @@ export function installInspector(resize:()=>void,settings:()=>void,orderHandlers
   const size=canvas.width;ctx.clearRect(0,0,size,size);ctx.fillStyle='#101e29';ctx.fillRect(0,0,size,size);ctx.strokeStyle='#9d91b2';ctx.strokeRect(.5,.5,size-1,size-1);
   ctx.fillStyle='#69778a';for(const b of sim.barriers){const p=mapPoint({x:b.minX,y:b.minY},size,sim.bounds);ctx.fillRect(p.x,p.y,(b.maxX-b.minX)/sim.bounds.width*size,(b.maxY-b.minY)/sim.bounds.width*size);}
   const dot=(position:Vec2,color:string,r:number)=>{const p=mapPoint(position,size,sim.bounds);ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();return p;};
-  const waypoint = sim.mission?.waypoint;
-  if (waypoint) {
-   const marker = dot(waypoint,'#75f3d7',5);
+  const mission = sim.mission, waypoint = mission?.waypoint;
+  if (mission && waypoint) {
+   const marker = dot(waypoint,carrierCueColors[mission.phase],5);
    ctx.fillStyle='#f2edf8';ctx.font='11px sans-serif';
-   ctx.fillText(sim.mission?.phase.toUpperCase() ?? '',marker.x+7,marker.y-5);
+   ctx.fillText(mission.phase.toUpperCase(),marker.x+7,marker.y-5);
   }
   for(const t of sim.turrets)if(t.health>0){const p=dot(t.position,t.armed?'#edab91':'#8dd9d0',4);ctx.fillStyle='#f2edf8';ctx.font='11px sans-serif';ctx.fillText(t.id,p.x+5,p.y-4);}
   for(const unit of sim.funnels)dot(unit.position,'#cbb7f4',3);
@@ -107,3 +107,4 @@ export function renderCommandReadiness(readiness:Record<CommandAction,CommandRea
   if(details)details.textContent=(action==='deploy'?'Deploy':'Recall')+' / '+item.hand+' / '+item.state+' / '+item.reason+' / pose '+(item.recognized??'uncertain')+' / score '+(item.score===null?'unavailable':item.score.toFixed(2))+' / active threshold '+item.threshold.toFixed(2)+(item.interruption?' / Last command interruption: '+item.interruption:'');
  }
 }
+import {carrierCueColors} from './carrier-mission';

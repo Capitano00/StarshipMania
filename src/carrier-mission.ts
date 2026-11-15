@@ -1,7 +1,9 @@
 import type {TargetId, Vec2} from './contracts';
 import {length, type Barrier} from './cover';
 
-type MissionPhase = 'launch' | 'relay' | 'extract' | 'complete';
+export type MissionPhase = 'launch' | 'relay' | 'extract' | 'complete';
+export const carrierCueColors = {launch:'#75f3d7', relay:'#d0b3ff', extract:'#ffd184', complete:'#ffd184'};
+export const carrierRadii = {launch:4, relay:3.5, extract:4, complete:0};
 export const carrierLaunch = {x:0, y:16};
 export const carrierRelay = {x:0, y:-21};
 export const carrierSpawn = {x:0, y:30};
@@ -27,6 +29,17 @@ export class CarrierMission {
     }
   }
 
+  navigation(position: Vec2): string {
+    const waypoint = this.waypoint;
+    if (!waypoint) return '';
+    const x = waypoint.x - position.x, y = waypoint.y - position.y;
+    const distance = Math.round(Math.hypot(x, y));
+    if (distance <= 2) return 'Beacon here';
+    const headings = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+    const sector = (Math.round(Math.atan2(x, -y) / (Math.PI / 4)) + 8) % 8;
+    return `${distance} units ${headings[sector]}`;
+  }
+
   objective(guardsRemaining: number): string {
     switch (this.phase) {
       case 'launch': return 'Launch · reach the deck beacon';
@@ -40,13 +53,13 @@ export class CarrierMission {
   }
 
   advance(position: Vec2, guardsRemaining: number) {
-    if (this.phase === 'launch' && length(position, carrierLaunch) <= 4) {
+    if (this.phase === 'launch' && length(position, carrierLaunch) <= carrierRadii.launch) {
       this.phase = 'relay';
     } else if (this.phase === 'relay') {
-      this.progress = guardsRemaining === 0 && length(position, carrierRelay) <= 3.5
+      this.progress = guardsRemaining === 0 && length(position, carrierRelay) <= carrierRadii.relay
         ? this.progress + 1 : 0;
       if (this.progress >= captureTicks) this.phase = 'extract';
-    } else if (this.phase === 'extract' && length(position, carrierSpawn) <= 4) {
+    } else if (this.phase === 'extract' && length(position, carrierSpawn) <= carrierRadii.extract) {
       this.phase = 'complete';
     }
   }

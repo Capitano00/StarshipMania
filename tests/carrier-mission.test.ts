@@ -13,6 +13,7 @@ describe('Orbital Relay', () => {
     expect(sim.bounds.width).toBe(72);
     expect(sim.position).toEqual(carrierSpawn);
     expect(sim.mission?.phase).toBe('launch');
+    expect(sim.mission?.navigation(sim.position)).toBe('14 units north');
     stepAt(carrierRelay);
     expect(sim.mission?.phase).toBe('launch');
     stepAt(carrierLaunch);
@@ -29,9 +30,11 @@ describe('Orbital Relay', () => {
     expect(sim.mission?.progress).toBe(0);
     stepAt(carrierRelay, 120);
     expect(sim.mission?.phase).toBe('extract');
+    expect(sim.mission?.navigation(sim.position)).toBe('51 units south');
     expect(sim.outcome).toBe('playing');
     stepAt(carrierSpawn);
     expect(sim.outcome).toBe('won');
+    expect(sim.mission?.navigation(sim.position)).toBe('');
     expect(new Simulation('retry-fixture', 'combat', 2, true).mission?.phase).toBe('launch');
   });
 

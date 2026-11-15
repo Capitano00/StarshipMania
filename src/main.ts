@@ -28,13 +28,14 @@ import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
 import {createVoiceRecall} from './voice-recall';
+import {CarrierAudio} from './carrier-audio';
 import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
 <header><span class="brand">Starship<span>Mania</span></span><div class="privacy"><i></i><span id="privacy-mode">CAMERA AND MIC OFF</span></div></header>
 <main>${titleScreen}<section id="setup" class="setup" aria-labelledby="prepare-heading" hidden>${prepareIntro}
-<div class="prepare-choices"><button id="quick-keyboard" class="primary">Play with keyboard</button><button id="activate">Activate webcam</button></div>
+<div class="prepare-choices"><button id="quick-keyboard" class="primary">Play with keyboard</button><button id="activate">Activate webcam</button><button id="prepare-carrier-sound" type="button" aria-pressed="false" hidden>Mission sounds</button></div>
 <p class="prepare-choice-note">WASD moves, arrow keys aim, J fires the mech, H fires assigned drones, K deploys and R recalls. Your webcam is optional and processes images on this device.</p>
 <p id="arena-error" role="alert" hidden></p>
 <div id="prepare-launch" class="prepare-launch" hidden><p>Controls ready.</p><button id="enter" class="primary" disabled>Enter arena</button><button id="train" class="primary" disabled hidden>Start training</button></div>
@@ -68,6 +69,22 @@ const guideButton=document.createElement('button');guideButton.id='open-gesture-
 const recognitionPanel=document.createElement('fieldset');recognitionPanel.id='recognition-presets';recognitionPanel.innerHTML='<legend>Recognition confidence · adjust while paused</legend>'+(['Left','Right'] as const).map(side=>`<label for="preset-${side}">${side} hand <select id="preset-${side}">${Object.entries(recognitionPresets).map(([name,p])=>`<option value="${name}" ${name==='Balanced'?'selected':''}>${name} (${p.enter.toFixed(2)} / ${p.retain.toFixed(2)})</option>`).join('')}</select></label>`).join('')+'<small>Enter / retain score. Separate from palm sensitivity. Session only.</small>';el('calibration-guide').append(recognitionPanel);
 const settingsButton=document.createElement('button');settingsButton.id='settings';settingsButton.hidden=true;settingsButton.textContent='Settings';el('back').after(settingsButton);
 el('settings-diagnostics').after(createVoiceGuide());
+const carrierAudio = new CarrierAudio();
+const carrierSoundSetting = document.createElement('button');
+carrierSoundSetting.type = 'button';
+carrierSoundSetting.textContent = 'Mission sounds';
+carrierSoundSetting.setAttribute('aria-pressed', 'false');
+el('settings-diagnostics').after(carrierSoundSetting);
+const carrierSoundButtons = [el<HTMLButtonElement>('prepare-carrier-sound'), carrierSoundSetting];
+for (const button of carrierSoundButtons) button.onclick = async () => {
+  for (const toggle of carrierSoundButtons) toggle.disabled = true;
+  const updated = await carrierAudio.toggle();
+  for (const toggle of carrierSoundButtons) {
+    toggle.setAttribute('aria-pressed', String(carrierAudio.enabled));
+    toggle.textContent = updated ? 'Mission sounds' : 'Mission sounds unavailable';
+    toggle.disabled = false;
+  }
+};
 const trainingPanel=document.createElement('section');trainingPanel.id='training-panel';trainingPanel.hidden=true;trainingPanel.innerHTML='<strong>PADISARAH TRAINING · no enemy fire · indestructible targets</strong><p id="training-step" role="status" aria-live="polite"></p><p id="training-help"></p><div class="buttons"><button id="retry-training">Retry practice</button><button id="leave-training">Leave practice · enter arena</button></div>';el('arena').append(trainingPanel);
 const resultsPanel=document.createElement('section');resultsPanel.id='results-panel';resultsPanel.hidden=true;resultsPanel.setAttribute('aria-labelledby','results-title');resultsPanel.innerHTML='<h2 id="results-title"></h2><p id="results-counts"></p><div class="buttons"><button id="play-again" class="primary">Play again</button><button id="results-training">Training</button><button id="results-settings">Settings</button><button id="results-menu">Main menu</button></div>';el('arena').append(resultsPanel);
 const objective=document.createElement('p');
@@ -215,6 +232,7 @@ function showPrepare(mode:PlayMode=prepareMode){
   el('quick-keyboard').textContent=training?'Train with keyboard':'Play with keyboard';
   el('enter').hidden=training;
   el('train').hidden=!training;
+  el('prepare-carrier-sound').hidden=mode!=='carrier';
   el('prepare-heading').focus();
 }
 function showTitle(){
@@ -364,8 +382,9 @@ function loop(now:number){
       return sim.accepted>accepted;
     });
   }
-  const recalls=sim.recalls;
+  const recalls=sim.recalls, phaseBefore=sim.mission?.phase;
   sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  if (sim.mission && sim.mission.phase !== phaseBefore) carrierAudio.play(sim.mission.phase);
   if(sim.recalls>recalls)clearWaitingOrders();
   // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
   if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
@@ -421,7 +440,9 @@ function loop(now:number){
   el('training-step').textContent=source==='synthetic'?keyboardTrainingPrompt(sim.trainingStep,session.autofire):sim.trainingInstruction+([0,2].includes(sim.trainingStep)?' '+actionLabel('deploy'):sim.trainingStep===1?' '+(session.autofire?'AUTO FIRE ON':actionLabel('padisarahFire')):sim.trainingStep===3?' '+actionLabel('recall'):'');
   const currentObjective = sim.mission?.objective(sim.missionGuardsRemaining) ?? 'Clear all six targets.';
   el('arena-title').textContent = sim.mode==='training' ? 'Practise deployment. No combat damage.' : currentObjective;
-  if (objective.textContent !== currentObjective) objective.textContent = currentObjective;
+  const navigation = sim.mission?.navigation(sim.position);
+  const objectiveDisplay = navigation ? `${currentObjective} · ${navigation}` : currentObjective;
+  if (objective.textContent !== objectiveDisplay) objective.textContent = objectiveDisplay;
   objective.hidden=sim.mode==='training'||sim.outcome!=='playing';
   el('training-help').textContent=controls.paused?(sim.trainingStep===5?'Repeat practice or enter combat when ready.':`Paused · ${resumeIntent.message(now)||controls.reason} · choose Resume when ready.`):sim.message;
   el('retry-training').textContent=sim.trainingStep===5?'Repeat practice':'Retry practice';

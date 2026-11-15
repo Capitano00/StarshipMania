@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import {actorDefinitions,type Simulation} from './simulation';
 import type {TargetId,Vec2} from './contracts';
-import {carrierLaunch} from './carrier-mission';
-import {createCarrierDeck, createDroneVisual, createLaunchGate, createMechVisual, createOrbitalBackdrop} from './fx/space-art';
+import {carrierCueColors, carrierLaunch, carrierRadii, carrierRelay, carrierSpawn} from './carrier-mission';
+import {createCarrierDeck, createDroneVisual, createExtractionPad, createLaunchGate, createMechVisual, createOrbitalBackdrop, createRelayArray} from './fx/space-art';
 import {nominate,type ProjectedTarget} from './targeting';
 const metal=(color:number,emissive=0)=>new THREE.MeshStandardMaterial({color,roughness:.6,metalness:.45,emissive,emissiveIntensity:.5});
 const box=(w:number,h:number,d:number,color:number,x=0,y=0,z=0)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),metal(color));mesh.position.set(x,y,z);return mesh;};
@@ -15,8 +15,10 @@ export class ArenaView {
  private layout = new THREE.Group();
  private decks = new Map<number, THREE.Group>();
  private launchGate = createLaunchGate();
+ private relay = createRelayArray();
+ private extraction = createExtractionPad();
  private layoutKey: boolean | undefined;
- private waypointMarker = ring(2.8,.1,0x75f3d7);
+ private waypointMarker = ring(1,.025,0x75f3d7);
  private ray=new THREE.Raycaster();private ground=new THREE.Plane(new THREE.Vector3(0,1,0),-1);
  private previewRing=ring(1.65,.055,0xf4d577);private assignedRing=ring(1.9,.12,0xcbb7f4);private aimedRing=ring(1.4,.035,0xf5f1fa);
  private line:THREE.Line;private impact=ring(.5,.06,0xffc77c);private drawnRun='';private candidate:TargetId|null=null;
@@ -28,7 +30,11 @@ export class ArenaView {
   this.mech = mech.root; this.legs = mech.legs; this.mechGun = mech.gun;
   this.launchGate.position.set(carrierLaunch.x,0,carrierLaunch.y);
   this.launchGate.visible = false;
-  this.scene.add(this.mech,this.launchGate,createOrbitalBackdrop({withStars:classic}));
+  this.relay.group.position.set(carrierRelay.x,0,carrierRelay.y);
+  this.extraction.group.position.set(carrierSpawn.x,0,carrierSpawn.y);
+  this.relay.group.visible = false;
+  this.extraction.group.visible = false;
+  this.scene.add(this.mech,this.launchGate,this.relay.group,this.extraction.group,createOrbitalBackdrop({withStars:classic}));
   for(const actor of actorDefinitions){const {id,armed,position:{x,y:z}}=actor;
    const group=new THREE.Group();group.position.set(x,0,z);group.userData.targetId=id;
    const base=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.4,.5,8),metal(0x4b4352));base.position.y=.25;group.add(base);
@@ -52,6 +58,8 @@ export class ArenaView {
   this.walls = [];
   const bounds = sim.bounds;
   this.launchGate.visible = carrier;
+  this.relay.group.visible = carrier;
+  this.extraction.group.visible = carrier;
   for (const deck of this.decks.values()) deck.visible = false;
   let deck = this.decks.get(bounds.width);
   if (!deck) {
@@ -99,9 +107,15 @@ export class ArenaView {
   for(const turret of sim.turrets){const head=this.turretHeads.get(turret.id)!;head.rotation.y=Math.atan2(sim.position.x-turret.position.x,sim.position.y-turret.position.y);}
   sim.funnels.forEach((f,i)=>{if(!this.funnels.has(f.id))this.createUnit(f.id);const mesh=this.funnels.get(f.id)!;mesh.position.set(f.position.x,1.6+Math.sin(sim.tick*.08+i)*.05,f.position.y);const target=f.order.type==='INTERCEPT'?sim.turrets.find(t=>t.id===(f.order as {targetId:TargetId}).targetId)?.position:f.path[f.waypoint];if(target)mesh.rotation.y=Math.atan2(target.x-f.position.x,target.y-f.position.y)+Math.PI;});
   for(const [id,mesh] of this.funnels){const unit=sim.funnels.find(f=>f.id===id);mesh.visible=!!unit;const marker=this.unitRings.get(id)!;const target=unit?.order.type==='INTERCEPT'?sim.turrets.find(t=>unit.order.type==='INTERCEPT'&&t.id===unit.order.targetId&&t.health>0):undefined;marker.visible=!!target;if(target)marker.position.set(target.position.x,.08,target.position.y);}
-  const waypoint = sim.mission?.waypoint;
+  const mission = sim.mission, waypoint = mission?.waypoint;
   this.waypointMarker.visible = Boolean(waypoint);
-  if (waypoint) this.waypointMarker.position.set(waypoint.x,.08,waypoint.y);
+  this.relay.statusLights.visible = mission?.phase === 'relay';
+  this.extraction.statusLights.visible = mission?.phase === 'extract';
+  if (mission && waypoint) {
+   this.waypointMarker.position.set(waypoint.x,.08,waypoint.y);
+   this.waypointMarker.scale.setScalar(carrierRadii[mission.phase]);
+   this.waypointMarker.material.color.set(carrierCueColors[mission.phase]);
+  }
   this.mech.scale.setScalar(sim.dash?1.015:1);
   const alive=new Set(sim.projectiles.map(p=>p.id));for(const [id,mesh] of this.shots)if(!alive.has(id)){this.scene.remove(mesh);mesh.geometry.dispose();(mesh.material as THREE.Material).dispose();this.shots.delete(id);}
   for(const shot of sim.projectiles){let mesh=this.shots.get(shot.id);if(!mesh){const radius=shot.team==='enemy'?.2:shot.team==='pilot'?.12:.17;mesh=new THREE.Mesh(new THREE.SphereGeometry(radius,8,6),new THREE.MeshBasicMaterial({color:shot.team==='enemy'?0xffb65d:shot.team==='pilot'?0x90dcd1:0xcbb7f4}));this.shots.set(shot.id,mesh);this.scene.add(mesh);}mesh.position.set(shot.position.x,1,shot.position.y);}

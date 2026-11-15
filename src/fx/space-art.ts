@@ -201,6 +201,51 @@ export function createCarrierDeck(width: number, half: number) {
   return scene;
 }
 
+/** Relay has a vertical twin dish, with panels outside the playable capture circle. */
+export function createRelayArray() {
+  const group = new THREE.Group();
+  group.name = 'Relay array';
+  const statusLights = new THREE.Group();
+  for (const side of [-1, 1]) {
+    const x = side * 3.8;
+    group.add(chamfer(1.8, .28, 1.9, .12, frame, x, .14, 0));
+    group.add(chamfer(.75, 2.8, .75, .13, plateLight, x, 1.65, 0));
+    group.add(cylinder(.3, .57, joint, x, 3.36, 0));
+    const dish = new THREE.Mesh(new THREE.TorusGeometry(.63, .12, 6, 24), armor);
+    dish.position.set(x, 3.45, .17);
+    group.add(dish);
+    statusLights.add(block(.15, 1.7, .08, violet, x, 1.56, .47));
+    statusLights.add(block(.43, .17, .12, violet, x, 3.46, .26));
+    for (let row = -1; row <= 1; row++) {
+      statusLights.add(block(.5, .035, .15, violetSoft, side * 2.9, .026, row * .55));
+    }
+  }
+  group.add(statusLights);
+  return {group, statusLights};
+}
+
+/** Flat amber chevrons give the extraction pad a different silhouette and light pattern. */
+export function createExtractionPad() {
+  const group = new THREE.Group();
+  group.name = 'Extraction pad';
+  const statusLights = new THREE.Group();
+  const amber = new THREE.MeshBasicMaterial({color: 0xffd184, toneMapped: false});
+  group.add(block(8.5, .02, 8.5, plateDark, 0, .007, 0));
+  for (const side of [-1, 1]) {
+    for (const end of [-1, 1]) {
+      group.add(block(.22, .04, 1.25, warm, side * 3.9, .028, end * 3.3));
+      group.add(block(1.25, .04, .22, warm, side * 3.3, .028, end * 3.9));
+    }
+    for (const row of [-1, 1]) {
+      const bar = block(1.43, .04, .22, amber, side * .52, .039, row * 1.53);
+      bar.rotation.y = side * .58;
+      statusLights.add(bar);
+    }
+  }
+  group.add(statusLights);
+  return {group, statusLights};
+}
+
 export function createLaunchGate() {
   const group = new THREE.Group();
   group.name = 'Carrier launch aperture';

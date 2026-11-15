@@ -1,12 +1,11 @@
 import type {CommandAction,CommandReadiness} from './gestures';
-import {arenaBounds} from './arena-layout';
-import {barriers} from './cover';
+import {arenaBounds,type ArenaBounds} from './arena-layout';
 import type {Simulation} from './simulation';
 import type {Vec2} from './contracts';
 import {installVoiceTranscript} from './voice-transcript';
 import {installOrderQueueHud, type OrderQueueHandlers, type OrderQueuePending, type OrderQueueRow} from './hud/order-queue';
 
-export const mapPoint=(p:Vec2,size:number)=>({x:(p.x+arenaBounds.half)/arenaBounds.width*size,y:(p.y+arenaBounds.half)/arenaBounds.width*size});
+export const mapPoint=(p:Vec2,size:number,bounds:ArenaBounds=arenaBounds)=>({x:(p.x+bounds.half)/bounds.width*size,y:(p.y+bounds.half)/bounds.width*size});
 
 /** Presentation only: the full-reveal map never nominates or issues a command. */
 export function installInspector(resize:()=>void,settings:()=>void,orderHandlers?:OrderQueueHandlers){
@@ -86,12 +85,18 @@ export function installInspector(resize:()=>void,settings:()=>void,orderHandlers
   for(const side of ['Left','Right'])if(tracking.includes(side+': no input'))unit.textContent=unit.textContent!.replace(side+' input uncertain',side+' no input');
   if(!ctx)return;
   const size=canvas.width;ctx.clearRect(0,0,size,size);ctx.fillStyle='#101e29';ctx.fillRect(0,0,size,size);ctx.strokeStyle='#9d91b2';ctx.strokeRect(.5,.5,size-1,size-1);
-  ctx.fillStyle='#69778a';for(const b of barriers){const p=mapPoint({x:b.minX,y:b.minY},size);ctx.fillRect(p.x,p.y,(b.maxX-b.minX)/arenaBounds.width*size,(b.maxY-b.minY)/arenaBounds.width*size);}
-  const dot=(position:Vec2,color:string,r:number)=>{const p=mapPoint(position,size);ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();return p;};
+  ctx.fillStyle='#69778a';for(const b of sim.barriers){const p=mapPoint({x:b.minX,y:b.minY},size,sim.bounds);ctx.fillRect(p.x,p.y,(b.maxX-b.minX)/sim.bounds.width*size,(b.maxY-b.minY)/sim.bounds.width*size);}
+  const dot=(position:Vec2,color:string,r:number)=>{const p=mapPoint(position,size,sim.bounds);ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();return p;};
+  const waypoint = sim.mission?.waypoint;
+  if (waypoint) {
+   const marker = dot(waypoint,'#75f3d7',5);
+   ctx.fillStyle='#f2edf8';ctx.font='11px sans-serif';
+   ctx.fillText(sim.mission?.phase.toUpperCase() ?? '',marker.x+7,marker.y-5);
+  }
   for(const t of sim.turrets)if(t.health>0){const p=dot(t.position,t.armed?'#edab91':'#8dd9d0',4);ctx.fillStyle='#f2edf8';ctx.font='11px sans-serif';ctx.fillText(t.id,p.x+5,p.y-4);}
   for(const unit of sim.funnels)dot(unit.position,'#cbb7f4',3);
   const p=dot(sim.position,'#f5f0dd',4),angle=Math.atan2(aim.y-sim.position.y,aim.x-sim.position.x);ctx.strokeStyle='#f5f0dd';ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+Math.cos(angle)*11,p.y+Math.sin(angle)*11);ctx.stroke();
-  for(const unit of sim.funnels)if(unit.order.type==='INTERCEPT'){const targetId=unit.order.targetId,t=sim.turrets.find(t=>t.id===targetId&&t.health>0);if(t){const q=mapPoint(t.position,size),from=mapPoint(unit.position,size);ctx.strokeStyle='#d5baff';ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(q.x,q.y);ctx.stroke();ctx.beginPath();ctx.arc(q.x,q.y,8,0,Math.PI*2);ctx.stroke();}}
+  for(const unit of sim.funnels)if(unit.order.type==='INTERCEPT'){const targetId=unit.order.targetId,t=sim.turrets.find(t=>t.id===targetId&&t.health>0);if(t){const q=mapPoint(t.position,size,sim.bounds),from=mapPoint(unit.position,size,sim.bounds);ctx.strokeStyle='#d5baff';ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(q.x,q.y);ctx.stroke();ctx.beginPath();ctx.arc(q.x,q.y,8,0,Math.PI*2);ctx.stroke();}}
  };
  return {render,voiceTranscript,orderQueue,showVoice:()=>selectTab('voice')};
 }

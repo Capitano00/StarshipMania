@@ -1,4 +1,5 @@
-import {arenaBounds} from './arena-layout';
+import {arenaBounds, carrierBounds, type ArenaBounds} from './arena-layout';
+import {CarrierMission, carrierBarriers, carrierSpawn} from './carrier-mission';
 import {clamp,finitePoint,neutralFrame,targetIds,type ActionIntent,type ActionPayload,type DronePolicy,type DashKind,type CommandEnvelope,type CommandGroup,type Order,type SquadOrder,pilotProvenances,type PilotControlFrame,type TargetId,type Vec2} from './contracts';
 import {barriers,clearLine,firstBarrier,freePoint,length,route,slidePath,movingImpact,sweepCircle} from './cover';
 import {RoundEvents} from './round-events';
@@ -17,7 +18,9 @@ export type Funnel={id:string;order:Order;origin:'manual'|'auto';assignment:numb
 export type CommandRecord={commandId:string|null;tick:number;group:string|null;provenance:string|null;order:Order|null;squad?:{unit:string;targetId:TargetId}[];outcome:'accepted'|'rejected';reason?:string;units:string[];assignment?:number};
 const direction=(a:Vec2,b:Vec2)=>{const d=length(a,b)||1;return {x:(b.x-a.x)/d,y:(b.y-a.y)/d};};
 export class Simulation {
- tick=0;health=100;position={x:0,y:15};outcome:'playing'|'won'|'lost'='playing';readonly barriers=barriers;
+ tick=0;health=100;position={x:0,y:15};outcome:'playing'|'won'|'lost'='playing';readonly barriers: typeof barriers;
+ readonly bounds: ArenaBounds;
+ readonly mission: CarrierMission | null;
  turrets:Turret[]=actorDefinitions.map((t,i)=>({...t,position:{...t.position},health:100,cooldown:90+i*60,waypoint:1}));
  readonly events=new RoundEvents();
  pilotFire=false;padisarahFire=false;padisarahFiring=false;
@@ -116,10 +119,17 @@ export class Simulation {
   this.commandLog.unshift({commandId:text(c.commandId),tick:this.tick,group:text(c.group),provenance:text(c.provenance),order,squad,outcome,reason,units,assignment});
   if(this.commandLog.length>64)this.commandLog.length=64;
  }
- constructor(public readonly runId='run-1',public readonly mode:'combat'|'training'='combat',unitCount=2){
+ constructor(public readonly runId='run-1',public readonly mode:'combat'|'training'='combat',unitCount=2,carrier=false){
   if(!Number.isSafeInteger(unitCount)||unitCount<1||unitCount>16)throw new Error('Invalid fixture unit count');
-  this.funnels=Array.from({length:unitCount},(_,i)=>{const x=(i-(unitCount-1)/2)*3.6;return {id:'U'+(i+1),order:{type:'RECALL'},origin:'manual',assignment:0,autonomous:false,status:'Following',position:{x,y:11},destination:{x,y:11},requested:{x,y:11},cooldown:i*12,path:[],waypoint:0,blocked:false,revision:-1};});
+  this.mission = mode === 'combat' && carrier ? new CarrierMission() : null;
+  this.barriers = this.mission ? carrierBarriers : barriers;
+  this.bounds = this.mission ? carrierBounds : arenaBounds;
+  if (this.mission) this.position = {...carrierSpawn};
+  this.funnels=Array.from({length:unitCount},(_,i)=>{const x=(i-(unitCount-1)/2)*3.6;return {id:'U'+(i+1),order:{type:'RECALL'},origin:'manual',assignment:0,autonomous:false,status:'Following',position:{x,y:this.mission?32:11},destination:{x,y:this.mission?32:11},requested:{x,y:this.mission?32:11},cooldown:i*12,path:[],waypoint:0,blocked:false,revision:-1};});
   if(mode==='training')this.turrets.forEach(t=>t.armed=false);
+ }
+ get missionGuardsRemaining() {
+  return this.turrets.filter(target => this.mission?.guards.has(target.id) && target.health > 0).length;
  }
  get groupState(){
   const targets=this.funnels.map(f=>f.order.type==='INTERCEPT'?f.order.targetId:null),same=targets.every(t=>t===targets[0]);
@@ -233,10 +243,10 @@ export class Simulation {
  private planRoute(f:Funnel,index:number,desired:Vec2,target?:Turret):{goal:Vec2;path:Vec2[]}|null{
   const candidates:Vec2[]=[];
   if(target){candidates.push(desired);for(let k=0;k<8;k++){const angle=(k+index*8/this.funnels.length)*Math.PI/4;candidates.push({x:target.position.x+Math.sin(angle)*3.9,y:target.position.y+Math.cos(angle)*3.9});}}
-  else{const resolved=freePoint(desired);if(resolved)candidates.push(resolved);}
+  else{const resolved=freePoint(desired,.55,this.barriers,this.bounds);if(resolved)candidates.push(resolved);}
   for(const goal of candidates){
-   if(Math.abs(goal.x)>arenaBounds.unitLimit||Math.abs(goal.y)>arenaBounds.unitLimit||(target&&!clearLine(goal,target.position,.17)))continue;
-   const path=route(f.position,goal);
+   if(Math.abs(goal.x)>this.bounds.unitLimit||Math.abs(goal.y)>this.bounds.unitLimit||(target&&!clearLine(goal,target.position,.17,this.barriers)))continue;
+   const path=route(f.position,goal,.55,this.barriers);
    if(path)return {goal,path};
   }
   return null;
@@ -246,8 +256,8 @@ export class Simulation {
   const target=f.order.type==='INTERCEPT'?this.turrets.find(t=>t.id===(f.order as {targetId:TargetId}).targetId&&t.health>0):undefined;
   const desired=this.unitDestination(index,target);
   const tolerance=target?.patrol.length?.30:.05;
-  const routeValid=!f.path[f.waypoint]||clearLine(f.position,f.path[f.waypoint],.55);
-  if(f.revision===f.assignment&&!f.blocked&&length(desired,f.requested)<tolerance&&routeValid&&(!target||f.blocked||clearLine(f.destination,target.position,.17)))return;
+  const routeValid=!f.path[f.waypoint]||clearLine(f.position,f.path[f.waypoint],.55,this.barriers);
+  if(f.revision===f.assignment&&!f.blocked&&length(desired,f.requested)<tolerance&&routeValid&&(!target||f.blocked||clearLine(f.destination,target.position,.17,this.barriers)))return;
   f.revision=f.assignment;f.requested={...desired};f.path=[];f.waypoint=0;f.blocked=true;
   const plan=this.planRoute(f,index,desired,target);
   if(plan){f.destination={...plan.goal};f.path=plan.path;f.blocked=false;this.routeRetry.delete(f.id);return;}
@@ -273,13 +283,13 @@ export class Simulation {
   for(const t of this.turrets)if(t.health>0&&t.patrol.length){const goal=t.patrol[t.waypoint],d=length(t.position,goal),v=direction(t.position,goal),amount=Math.min(.035,d);t.position={x:t.position.x+v.x*amount,y:t.position.y+v.y*amount};if(d<=.035)t.waypoint=(t.waypoint+1)%t.patrol.length;}
   const move={x:clamp(frame.move.x),y:clamp(frame.move.y)},scale=Math.max(1,Math.hypot(move.x,move.y));
   const delta=this.dash?{x:this.dash.direction.x/3,y:this.dash.direction.y/3}:{x:move.x/scale*.13,y:-move.y/scale*.13};
-  const movement=slidePath(this.position,delta);this.position=movement.position;
+  const movement=slidePath(this.position,delta,.85,this.barriers,this.bounds);this.position=movement.position;
   if(this.dash&&--this.dash.remaining===0){this.dash=null;this.events.add(this.tick,'Booster','Finished','Pulse complete; blocked travel is not refunded');}
   if(this.fireCooldown>0)this.fireCooldown--;
   if(frame.fire&&this.fireCooldown===0){this.shoot(this.position,frame.aim,'pilot',.65);this.fireCooldown=10;}
   for(const shot of this.projectiles){
    const start=shot.position,end={x:start.x+shot.velocity.x,y:start.y+shot.velocity.y};
-   const wall=firstBarrier(start,end,shot.team==='enemy'?.2:shot.team==='pilot'?.12:.17);
+   const wall=firstBarrier(start,end,shot.team==='enemy'?.2:shot.team==='pilot'?.12:.17,this.barriers);
    let hitTime=wall?.t??Infinity,target:Turret|null=null,mech=false;
    if(shot.team==='enemy'){const t=movingImpact(start,end,movement.segments,.85);if(t!==null&&t<hitTime){hitTime=t;mech=true;}}
    else for(const turret of this.turrets)if(turret.health>0){const t=sweepCircle(start,end,turret.position,1.2);if(t!==null&&t<hitTime){hitTime=t;target=turret;}}
@@ -294,7 +304,7 @@ export class Simulation {
     }
    }else shot.position=end;shot.life--;
   }
-  this.projectiles=this.projectiles.filter(s=>s.life>0&&Math.abs(s.position.x)<arenaBounds.projectileLimit&&Math.abs(s.position.y)<arenaBounds.projectileLimit);
+  this.projectiles=this.projectiles.filter(s=>s.life>0&&Math.abs(s.position.x)<this.bounds.projectileLimit&&Math.abs(s.position.y)<this.bounds.projectileLimit);
   const controlIntents=intents.filter(intent=>intent?.payload?.type!=='DASH').slice(0,8);
   const autonomyRevoked=this.mode==='combat'&&controlIntents.some(intent=>
    intent?.payload?.type==='AUTONOMY'&&!intent.payload.enabled&&this.validIntent(intent));
@@ -317,11 +327,22 @@ export class Simulation {
    const target=f.order.type==='INTERCEPT'?this.turrets.find(t=>t.id===(f.order as {targetId:TargetId}).targetId&&t.health>0):undefined;
    // Drones fire with pilot permission (Padisarah fire / Fire at Will / autofire), or on their own
    // autonomous assignment while the pilot's autonomy grant includes fire.
-   if((this.padisarahFire||(this.autonomy.fire&&f.autonomous))&&target&&!f.blocked&&length(f.position,f.destination)<.15&&clearLine(f.position,target.position,.17)&&f.cooldown<=0&&this.projectiles.length<128){this.shoot(f.position,target.position,'funnel',.4,f);f.cooldown=24;this.padisarahFiring=true;}
+   if((this.padisarahFire||(this.autonomy.fire&&f.autonomous))&&target&&!f.blocked&&length(f.position,f.destination)<.15&&clearLine(f.position,target.position,.17,this.barriers)&&f.cooldown<=0&&this.projectiles.length<128){this.shoot(f.position,target.position,'funnel',.4,f);f.cooldown=24;this.padisarahFiring=true;}
   });
   if(this.mode==='training'&&this.trainingStep===4&&this.groupState==='Following')this.trainingStep=5;
   if(this.mode==='combat')for(const turret of this.turrets)if(turret.armed&&turret.health>0&&--turret.cooldown<=0){this.shoot(turret.position,this.position,'enemy',.105);turret.cooldown=140;}
-  this.tick++;if(this.health<=0){this.outcome='lost';this.message='Mech disabled';}else if(this.turrets.every(t=>t.health<=0)){this.outcome='won';this.message='Arena clear';}
+  this.tick++;
+  if (this.health <= 0) { this.outcome='lost'; this.message='Mech disabled'; return; }
+  if (this.mission) {
+   const previousPhase = this.mission.phase;
+   this.mission.advance(this.position, this.missionGuardsRemaining);
+   if (this.mission.phase !== previousPhase) {
+    this.events.add(this.tick, 'Carrier mission', 'Advanced', this.mission.objective(this.missionGuardsRemaining));
+   }
+   if (this.mission.phase === 'complete') {
+    this.outcome='won'; this.message='Relay recovered';
+   }
+  } else if (this.turrets.every(t=>t.health<=0)) {this.outcome='won';this.message='Arena clear';}
  }
 }
 export class FixedClock {

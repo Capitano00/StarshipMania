@@ -1,4 +1,4 @@
-export type PlayMode = 'combat' | 'training';
+export type PlayMode = 'combat' | 'training' | 'carrier';
 
 const keyboardTrainingSteps = [
   '1 / 5 · Aim at T1 with the arrow keys, then hold K to deploy.',
@@ -20,6 +20,7 @@ export const titleScreen = `
       <p>Pilot a mech and command two drones.</p>
       <nav aria-label="Main menu" class="title-actions">
         <button id="title-play" class="primary" type="button">Play</button>
+        <button id="title-carrier" type="button">Orbital Relay</button>
         <button id="title-training" type="button">Training</button>
         <button id="title-settings" type="button">Settings</button>
       </nav>

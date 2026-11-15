@@ -209,6 +209,9 @@ export class ArenaFx {
       this.lastHit = sim.lastHit?.id ?? 0; this.lastEvent = sim.events.entries[0]?.id ?? 0;
     }
     this.sky.material.uniforms.time.value = t;
+    const gridScale = (sim.bounds?.width ?? arenaBounds.width) / arenaBounds.width;
+    this.grid.scale.set(gridScale,gridScale,1);
+    this.grid.material.uniforms.halfSize.value = sim.bounds?.half ?? arenaBounds.half;
     this.grid.material.uniforms.time.value = t;
     this.grid.material.uniforms.focus.value.set(sim.position.x, sim.position.y);
 

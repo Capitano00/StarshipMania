@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-import {CameraInput,captureBitmap,type CameraHost} from '../src/camera';
+import {CameraInput,captureBitmap,captureTrackingBitmap,type CameraHost} from '../src/camera';
 import {Controls,type Observation} from '../src/controls';
 function fixture(){const track={stop:vi.fn(),addEventListener:vi.fn()};const stream={getTracks:()=>[track]} as unknown as MediaStream;let callback:(...args:Parameters<VideoFrameRequestCallback>)=>void|Promise<void>=()=>{};const video={srcObject:null,muted:false,playsInline:false,readyState:2,currentTime:0,requestVideoFrameCallback:vi.fn((cb:VideoFrameRequestCallback)=>{callback=cb;return 1;}),cancelVideoFrameCallback:vi.fn(),play:vi.fn(async()=>{}),pause:vi.fn()} as unknown as HTMLVideoElement;const worker={postMessage:vi.fn(),terminate:vi.fn(),onmessage:null,onerror:null} as unknown as Worker;const bitmap={close:vi.fn()} as unknown as ImageBitmap;const observe=vi.fn(),stopped=vi.fn();let epoch=0;const host:CameraHost={media:{getUserMedia:vi.fn(async()=>stream)},createWorker:()=>worker,bitmap:vi.fn(async()=>bitmap),now:()=>100,hidden:()=>false};const camera=new CameraInput(video,()=>epoch,observe,stopped,host);const deliver=(id=1,time=100)=>callback(host.now(),{presentedFrames:id,presentationTime:time} as VideoFrameCallbackMetadata);return {camera,video,track,worker,bitmap,host,stream,observe,stopped,deliver,callback:()=>callback,nextEpoch:()=>epoch++};}
 describe('synthetic camera lifecycle mocks — never opens a real camera',()=>{
@@ -47,4 +47,21 @@ it('cancelled asset check cannot start a late permission request',async()=>{
  const pending=f.camera.activate(()=>new Promise(resolve=>{done=resolve;}));
  f.camera.stop();done(null);await pending;
  expect(f.host.media.getUserMedia).not.toHaveBeenCalled();
+});
+
+it('downsizes tracking frames without changing their aspect ratio or enlarging smaller video',async()=>{
+  const {video,bitmap}=fixture();
+  const native=vi.fn(async()=>bitmap);
+  vi.stubGlobal('createImageBitmap',native);
+  try {
+    Object.assign(video,{videoWidth:640,videoHeight:480});
+    await captureTrackingBitmap(video);
+    expect(native).toHaveBeenLastCalledWith(video,{resizeWidth:320,resizeHeight:240,resizeQuality:'low'});
+    Object.assign(video,{videoWidth:480,videoHeight:640});
+    await captureTrackingBitmap(video);
+    expect(native).toHaveBeenLastCalledWith(video,{resizeWidth:240,resizeHeight:320,resizeQuality:'low'});
+    Object.assign(video,{videoWidth:320,videoHeight:240});
+    await captureTrackingBitmap(video);
+    expect(native).toHaveBeenLastCalledWith(video);
+  } finally {vi.unstubAllGlobals();}
 });

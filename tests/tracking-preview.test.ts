@@ -41,6 +41,15 @@ describe('display-only tracking preview with synthetic canvas host',()=>{
     const duplicate=fixture(),s=sample();s.hands[1].side='Left';duplicate.preview.observe(s,skeletons(),false,0);duplicate.render();expect(duplicate.context.fillText.mock.calls.every(call=>call[0]==='? · uncertain')).toBe(true);
     const f=fixture();f.preview.observe(sample(1),skeletons(1),false,1);f.render(100,1);expect(f.context.fillText).not.toHaveBeenCalled();expect(f.status.textContent).toContain('Tracking reset');
   });
+  it('limits repeated preview paints while removing stale landmarks immediately',()=>{
+    const f=fixture();f.preview.observe(sample(),skeletons(),true,0);
+    f.render(270);f.render(280);f.render(300);
+    expect(f.context.drawImage).toHaveBeenCalledTimes(1);
+    f.context.arc.mockClear();f.render(301);
+    expect(f.context.drawImage).toHaveBeenCalledTimes(2);
+    expect(f.context.arc).not.toHaveBeenCalled();
+    expect(f.status.textContent).toContain('Stale');
+  });
   it('distinguishes acquiring, stale and epoch-reset states and discards stale landmark drawings',()=>{
     const f=fixture();f.render(100,0,false,true);expect(f.status.textContent).toContain('Acquiring');
     f.preview.observe(sample(),skeletons(),true,0);f.render(300);expect(f.context.arc).toHaveBeenCalledTimes(42);

@@ -2,6 +2,20 @@ import type {Observation} from './controls';
 const MAX_FRAME_AGE_MS=200;
 // Native Web APIs require their global receiver, not the CameraHost object.
 export const captureBitmap=(source:ImageBitmapSource)=>globalThis.createImageBitmap(source);
+const TRACKING_BITMAP_MAX_SIDE=320;
+/** Keep the preview at native resolution while sending fewer pixels to the local worker. */
+export function captureTrackingBitmap(video:HTMLVideoElement) {
+  const {videoWidth:width,videoHeight:height}=video;
+  const longestSide=Math.max(width,height);
+  if(!(width>0&&height>0)||longestSide<=TRACKING_BITMAP_MAX_SIDE)return captureBitmap(video);
+  const scale=TRACKING_BITMAP_MAX_SIDE/longestSide;
+  return globalThis.createImageBitmap(video,{
+    resizeWidth:Math.max(1,Math.round(width*scale)),
+    resizeHeight:Math.max(1,Math.round(height*scale)),
+    resizeQuality:'low',
+  });
+}
+
 function captureFailure(error:unknown):string {
   const name=error instanceof Error?error.name:'';
   const detail=name==='InvalidStateError'?'video frame not ready':name==='SecurityError'?'browser blocked frame access':name==='TypeError'?'browser capture API failed':'frame extraction failed';
@@ -17,7 +31,7 @@ export class CameraInput {
   private generation=0;private stream:MediaStream|null=null;private worker:Worker|null=null;private busy=false;private sequence=0;
   private callbackId:number|null=null;private lastPresented=-1;
   private initializationTimer:ReturnType<typeof setTimeout>|null=null;
-  constructor(private video:HTMLVideoElement,private epoch:()=>number,private observe:(s:Observation,landmarks?:unknown)=>void,private stopped:(reason:string)=>void,private host:CameraHost={media:navigator.mediaDevices,createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureBitmap,now:()=>performance.now(),hidden:()=>document.hidden}){}
+  constructor(private video:HTMLVideoElement,private epoch:()=>number,private observe:(s:Observation,landmarks?:unknown)=>void,private stopped:(reason:string)=>void,private host:CameraHost={media:navigator.mediaDevices,createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureTrackingBitmap,now:()=>performance.now(),hidden:()=>document.hidden}){}
   async activate(checkAvailability?:()=>Promise<string|null>) {
     this.stop('Starting camera');const generation=this.generation;this.loading=true;this.status=checkAvailability?'Checking local webcam setup':'Waiting for camera permission';
     if(typeof this.video.requestVideoFrameCallback!=='function'||typeof this.video.cancelVideoFrameCallback!=='function'){this.stop('Frame-delivery API unavailable · camera disabled safely');return;}

@@ -28,7 +28,7 @@ import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
 import {createVoiceRecall} from './voice-recall';
-import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
+import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap,captureTrackingBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
@@ -472,7 +472,7 @@ function loop(frameTime:number){
   el<HTMLButtonElement>('train').disabled=!controls.calibrated||renderState!=='ready';
   el('arena-error').hidden=!renderMessage;el('arena-error').textContent=renderMessage;
   el('synthetic-help').hidden=source!=='synthetic'||!el('title-screen').hidden;el('tracking-state').textContent=controls.paused?'PAUSED':controls.needsRearm?'RECOVERY REQUIRED':controls.latest?'TRACKING':'INPUT NEUTRAL';
-  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${controls.processingMs.toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}${source==='camera'&&cameraDeliveryMs!==null?' · capture to result '+cameraDeliveryMs+' ms':''}`;
+  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${(source==='camera'&&diagnosticSample?diagnosticSample.processingMs:controls.processingMs).toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}${source==='camera'&&cameraDeliveryMs!==null?' · capture to result '+cameraDeliveryMs+' ms':''}`;
   el('health').textContent=String(sim.health);el<HTMLMeterElement>('health-meter').value=sim.health;el('remaining').textContent=`${sim.turrets.filter(t=>t.health>0).length} / ${sim.turrets.length}`;
   el('order-text').textContent=sim.funnels.map(f=>f.id+': '+(f.order.type==='INTERCEPT'?f.order.targetId:'Follow')+(f.blocked?' Blocked':'')).join(' / ');el('order-text').title=sim.funnels.map(f=>f.id+': '+f.status+' / '+f.origin).join(' / ');el('order-message').textContent=sim.groupState+' / '+sim.message;
   el('hit-feedback').textContent=sim.lastHit&&sim.tick-sim.lastHit.tick<90?`${sim.lastHit.team==='funnel'?'Padisarah':'Pilot'} hit ${sim.lastHit.target} · collision confirmed`:'';
@@ -591,7 +591,7 @@ if(qaEnabled){
       const bitmap=await captureBitmap(canvas);corrected=bitmap.width===640&&bitmap.height===480;bitmap.close();
       stream=canvas.captureStream(30);const syntheticStream=stream;const syntheticVideo=document.createElement('video');
       await new Promise<void>((resolve,reject)=>{
-        probe=new CameraInput(syntheticVideo,()=>0,()=>{if(++observations>=3)resolve();},reason=>{if(reason!=='Starting camera'&&reason!=='Synthetic check complete')reject(new Error('synthetic capture stopped'));},{media:{getUserMedia:async()=>syntheticStream},createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureBitmap,now:()=>performance.now(),hidden:()=>document.hidden});
+        probe=new CameraInput(syntheticVideo,()=>0,()=>{if(++observations>=3)resolve();},reason=>{if(reason!=='Starting camera'&&reason!=='Synthetic check complete')reject(new Error('synthetic capture stopped'));},{media:{getUserMedia:async()=>syntheticStream},createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureTrackingBitmap,now:()=>performance.now(),hidden:()=>document.hidden});
         let frame=0;timer=setInterval(()=>{context.fillStyle=++frame%2?'#101010':'#202020';context.fillRect(0,0,640,480);},33);
         timeout=setTimeout(()=>reject(new Error('synthetic capture timeout')),30000);void probe.activate();
       });

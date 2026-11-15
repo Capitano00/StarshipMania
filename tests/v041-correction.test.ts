@@ -9,7 +9,7 @@ import {arenaBounds} from '../src/arena-layout';
 
 // Real production projection/raycast methods; only WebGL construction is omitted.
 function projectionHost(){
- const view=Object.assign(Object.create(ArenaView.prototype),{camera:new THREE.PerspectiveCamera(52,1,.1,200),scene:new THREE.Scene(),mech:new THREE.Group(),turrets:new Map(),walls:[],ray:new THREE.Raycaster(),ground:new THREE.Plane(new THREE.Vector3(0,1,0),-1),canvas:{clientWidth:640,clientHeight:640},drawnRun:'',candidate:null}) as ArenaView;
+ const view=Object.assign(Object.create(ArenaView.prototype),{camera:new THREE.PerspectiveCamera(52,1,.1,200),scene:new THREE.Scene(),mech:new THREE.Group(),turrets:new Map(),visibleLabelTargets:new Set(),walls:[],ray:new THREE.Raycaster(),ground:new THREE.Plane(new THREE.Vector3(0,1,0),-1),canvas:{clientWidth:640,clientHeight:640},drawnRun:'',candidate:null}) as ArenaView;
  const sim=new Simulation('edge','training');sim.turrets=[];return {view,sim};
 }
 const hand=(side:'Left'|'Right',category='Open_Palm'):Hand=>({side,palm:{x:side==='Left'?.3:.7,y:.5},confidence:1,gesture:{category,score:1}});

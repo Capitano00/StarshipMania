@@ -20,6 +20,8 @@ import {ResumeIntent} from './resume-intent';
 import {TrackingPreview} from './tracking-preview';
 import {GuidedCalibration} from './guided-calibration';
 import {AgentController} from './agent/controller';
+import {OrderQueue,type OrderAssignment} from './agent/order-queue';
+import {createVoiceSupervisor} from './agent/voice-supervisor';
 import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
@@ -70,6 +72,18 @@ const pauseActions=document.createElement('div');pauseActions.className='buttons
 const arenaActions=document.createElement('div');arenaActions.id='arena-actions';arenaActions.innerHTML='<button id="arena-pause">Pause / Esc</button><button id="arena-retry">Retry round</button>';el('arena').append(arenaActions);
 // Supervisor agent: proposals need pilot approval (Y / N) unless the pilot grants autonomy (G). See src/agent/README.md.
 const agentController=new AgentController();let queuedAutonomy:{enabled:boolean;source:ActionIntent['source']}|null=null;
+const orderQueue=new OrderQueue();
+orderQueue.reset(sim.runId);
+function approveVoiceAssignment(current:Simulation,assignments:OrderAssignment[],reason:string){
+  const proposal=agentController.submit(current,{kind:'squad',assignments,reason},AgentController.basis(current),{requireApproval:true});
+  return proposal.ok&&agentController.approve(proposal.proposalId,current).ok;
+}
+const voiceSupervisor=createVoiceSupervisor({current:()=>gameplayActive()?sim:null,queue:orderQueue,submit:approveVoiceAssignment,
+  notify:message=>{sim.events.add(sim.tick,'Voice order','Pilot decision',message);}});
+function clearWaitingOrders(){
+  voiceSupervisor.clear();
+  orderQueue.discardImpossible(()=>true);
+}
 installSupervisorRuntime({getSim:()=>stage==='arena'?sim:null,controller:agentController},{exposeGlobal:qaEnabled||new URLSearchParams(location.search).has('supervisor')});
 const autonomyButton=document.createElement('button');autonomyButton.id='autonomy-toggle';autonomyButton.textContent='Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed','false');arenaActions.append(autonomyButton);
 const proposalPanel=document.createElement('section');proposalPanel.id='agent-proposal';proposalPanel.hidden=true;proposalPanel.setAttribute('aria-live','polite');proposalPanel.style.cssText='position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;display:flex;gap:8px;align-items:center;padding:8px 12px;background:#102430f0;border:1px solid #cbb7f4;border-radius:6px;font-size:12px;max-width:min(640px,92%)';
@@ -134,6 +148,7 @@ function recall(source:'local-keyboard-recall'|'local-voice-recall'='local-keybo
   const before=sim.accepted;
   sim.commands([sim.envelope({type:'RECALL'},source,`cmd-${++commandId}`)]);
   if (sim.accepted===before) return false;
+  clearWaitingOrders();
   controls.bindings.manualOverride();
   return true;
 }
@@ -144,6 +159,7 @@ function resetRound(mode:'combat'|'training'){
   // Retire old input and its events against the old run, never against its replacement.
   controls.restart();clearPending();
   resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode);sim.preferredPolicy=preferredPolicy;commandId=0;
+  orderQueue.reset(sim.runId);
   keys.clear();qaMissingHands.clear();syntheticAim={x:0,y:0};syntheticLoss=false;clock.reset();resultsShown=false;
 }
 function startRound(mode:'combat'|'training'){
@@ -272,7 +288,20 @@ function loop(now:number){
   if(queuedAutonomy){intents.push(sim.intent({type:'AUTONOMY',enabled:queuedAutonomy.enabled,fire:queuedAutonomy.enabled},queuedAutonomy.source));queuedAutonomy=null;}
   // Agent envelopes are created here, at the tick they are stepped (fresh id, run and tick); pilot commands still outrank them.
   const agentCommands=agentController.drain(sim);void before;
+  if(gameplayActive()&&sim.tick%15===0&&!commands.length&&!agentCommands.length&&!intents.length){
+    const targetAlive=(target:TargetId)=>sim.turrets.some(t=>t.id===target&&t.health>0);
+    orderQueue.discardImpossible(order=>order.assignments.some(a=>!targetAlive(a.target)));
+    orderQueue.dispatch(order=>order.assignments.every(a=>sim.funnels.some(f=>f.id===a.unit&&f.order.type==='RECALL')&&sim.canRouteIntercept(a.unit,a.target)),order=>{
+      if(!approveVoiceAssignment(sim,order.assignments,order.reason))return false;
+      const batch=agentController.drain(sim);
+      const accepted=sim.accepted;
+      sim.commands(batch);
+      return sim.accepted>accepted;
+    });
+  }
+  const recalls=sim.recalls;
   sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  if(sim.recalls>recalls)clearWaitingOrders();
   // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
   if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
   if(stage==='arena'&&(sim.outcome!=='playing'||(sim.mode==='training'&&sim.trainingStep===5))){resumeIntent.cancel();if(!controls.paused){stopVoice();controls.pause(sim.mode==='training'?'Practice complete':sim.message);clearPending();}}
@@ -352,6 +381,7 @@ function loop(now:number){
       :camera.ready?(controls.paused?'Tracking · arena paused':!controls.inputArmed?'Tracking · open hands to resume':'Tracking')
       :camera.status;
     inspector?.render(sim,lastWorldAim??sim.position,tracking,hands);
+    inspector?.orderQueue?.render(orderQueue.rows(),voiceSupervisor.pending());
     renderVoiceStatus();
   }
   requestAnimationFrame(loop);
@@ -436,7 +466,13 @@ if(qaEnabled){
 }
 if(qaEnabled){el('probe').hidden=false;el('probe').onclick=async()=>{const result=el('probe-result');const button=el<HTMLButtonElement>('probe');if(camera.active||camera.loading){result.textContent='Stop the webcam before this synthetic-only check.';return;}button.disabled=true;const unavailable=await checkWebcamAssets();if(unavailable||camera.active||camera.loading){button.disabled=false;result.textContent=unavailable??'Stop the webcam before this synthetic-only check.';return;}result.textContent='Loading local model · blank synthetic image only';const worker=new Worker('/tracking-worker.js');const timeout=setTimeout(()=>{worker.terminate();button.disabled=false;result.textContent='FAIL: local worker timeout';},30000);worker.onerror=()=>{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent='FAIL: worker error';};worker.onmessage=async({data})=>{if(data.type==='ready'){const canvas=new OffscreenCanvas(640,480);canvas.getContext('2d')!.fillRect(0,0,640,480);const bitmap=canvas.transferToImageBitmap();worker.postMessage({type:'frame',bitmap,epoch:0,sequence:1,capturedAt:performance.now()},[bitmap]);}else{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent=data.type==='observation'?`PASS: local model processed blank synthetic image; ${data.hands.length} hands, ${data.processingMs.toFixed(1)} ms (not camera latency)`:'FAIL: '+data.message;}};worker.postMessage({type:'init'});};}
 
-inspector=installInspector(()=>view?.resize(),()=>openSettings())??null;
+inspector=installInspector(()=>view?.resize(),()=>openSettings(),{
+  promote:id=>{if(gameplayActive())orderQueue.promote(id);},
+  cancel:id=>{orderQueue.cancel(id);},
+  confirm:()=>voiceSupervisor.confirm(),
+  defer:()=>voiceSupervisor.confirm(true),
+  dismiss:()=>voiceSupervisor.clear(),
+})??null;
 hud=hudClassic?null:mountHud();if(hud&&qaEnabled)Object.assign(globalThis,{__hudFeed:hudFeed});
 // ?hud-demo publishes SIMULATED events and owns the HUD's Accept/Dismiss; the real supervisor bridge is never connected then.
 if(hud&&demoRequested())startHudDemo(hudFeed,el('arena'));else if(hud){hudBridge=connectHud(agentController,hudFeed);voiceHud=createVoiceHudBridge(hudFeed);}
@@ -462,11 +498,19 @@ const voiceRecall=createVoiceRecall(() => recall('local-voice-recall'), (state, 
   voiceState=state;voiceDetail=detail??'';
   voiceButton.textContent=voiceRunning()?'Stop voice':'Start voice';
   el('privacy-mode').textContent=voiceRunning()?'VOICE USES ELEVENLABS':'LOCAL ONLY · NO RECORDING';
-  if(state==='off'||state==='unavailable')inspector?.voiceTranscript.discardPartial();
+  if(state==='off'||state==='unavailable'){
+    inspector?.voiceTranscript.discardPartial();
+    voiceSupervisor.clear();
+  }
   renderVoiceStatus();voiceHud?.status(state,detail);
 }, event=>{inspector?.voiceTranscript.update(event);voiceHud?.event(event);},
-// The same ElevenLabs agent may also call the seven supervisor tools (proposals / autonomy rules apply; see src/agent/README.md).
-()=>getSupervisorTools()?.adapters.clientTools()??{});
+()=> {
+  const tools=getSupervisorTools()?.adapters.clientTools();
+  return {
+    ...(tools?{get_game_state:tools.get_game_state,get_recent_events:tools.get_recent_events,get_task_status:tools.get_task_status}:{}),
+    ...voiceSupervisor.clientTools(),
+  };
+});
 function stopVoice(){if(voiceState!=='off')voiceRecall.stop();}
 voiceButton.onclick=()=>{
   if(voiceRunning())stopVoice();

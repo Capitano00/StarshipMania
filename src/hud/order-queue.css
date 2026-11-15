@@ -1,0 +1,45 @@
+#order-panel {
+  max-height: calc(100% - 38px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.order-queue {
+  padding: 6px 8px;
+  min-width: 0;
+  border: 1px solid var(--hud-hairline, #465064);
+  border-radius: var(--hud-r2, 5px);
+  background: var(--hud-glass, #0c1924);
+  color: var(--hud-text, #eaf2f4);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.order-queue summary { cursor: pointer; padding: 2px 0; }
+.order-queue-count { float: right; margin-inline-start: 6px; color: var(--hud-pilot, #90dcd1); }
+.order-queue-body, .order-queue-rows { display: grid; gap: 6px; }
+.order-queue-body { margin-top: 5px; }
+.order-queue-rows { margin: 0; padding: 0; list-style: none; }
+.order-queue-rows > li, .order-queue-pending {
+  padding: 6px;
+  border: 1px solid var(--hud-hairline, #465064);
+  border-left: 2px solid var(--hud-drone, #cbb7f4);
+  background: var(--hud-raised, #13222f);
+}
+.order-queue-rows > li[data-status='executed'] { border-left-color: var(--hud-pilot, #90dcd1); }
+.order-queue-rows > li[data-status='cancelled'] { border-left-color: var(--hud-text-3, #8096a1); }
+.order-queue-pending { border-left-color: var(--hud-preview, #f4d577); }
+.order-queue-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; }
+.order-queue-meta span, .order-queue-detail { color: var(--hud-text-2, #9fb3bd); }
+.order-queue-targets, .order-queue-approval-title { color: var(--hud-drone, #cbb7f4); }
+.order-queue p { margin: 3px 0; }
+.order-queue-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 4px; }
+.order-queue-actions button { padding: 3px 6px; min-height: 26px; font-size: 11px; }
+
+body.hud-v2 #inspector-aux:has(#order-panel:not([hidden])) { flex-shrink: 0; }
+body.hud-v2 #order-panel { max-height: min(35dvh, 320px); }
+
+@media (max-width: 700px) {
+  body:not(.hud-v2) #arena-inspector:has(#order-panel:not([hidden])) #inspector-map { display: none; }
+  body:not(.hud-v2) #arena-inspector:has(#order-panel:not([hidden])) #inspector-aux { grid-column: 2 / -1; }
+}

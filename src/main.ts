@@ -22,8 +22,8 @@ import {ResumeIntent} from './resume-intent';
 import {TrackingPreview} from './tracking-preview';
 import {GuidedCalibration} from './guided-calibration';
 import {AgentController} from './agent/controller';
-import {OrderQueue,type OrderAssignment} from './agent/order-queue';
-import {createVoiceSupervisor} from './agent/voice-supervisor';
+import {OrderQueue,type OrderAssignment,type OrderRow as OrderQueueRow} from './agent/order-queue';
+import {createVoiceSupervisor, describeVoiceAssignments, type VoiceOrderOutcome} from './agent/voice-supervisor';
 import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
@@ -97,13 +97,17 @@ function approveVoiceAssignment(current:Simulation,assignments:OrderAssignment[]
 }
 type VoiceReceipt = {summary: string; recallUnit?: OrderAssignment['unit']};
 const voiceReceipts = new Map<string, VoiceReceipt>();
+function presentVoiceOrder(outcome: VoiceOrderOutcome, detail: string) {
+  sim.events.add(sim.tick,'Voice order',outcome,detail);
+  inspector?.voiceTranscript.showOrderResult(outcome,detail);
+}
 const voiceSupervisor=createVoiceSupervisor({
   current:()=>gameplayActive()?sim:null,
   queue:orderQueue,
   submit:(current,assignments,reason)=>{
     const id=approveVoiceAssignment(current,assignments,reason);
     if(!id)return false;
-    voiceReceipts.set(id,{summary:assignments.map(({unit,target})=>`${unit} to ${target}`).join(' · ')});
+    voiceReceipts.set(id,{summary:describeVoiceAssignments(assignments)});
     return true;
   },
   submitRecall:(current,unit,reason)=>{
@@ -112,7 +116,7 @@ const voiceSupervisor=createVoiceSupervisor({
     voiceReceipts.set(proposal.proposalId,{summary:`Recall ${unit}`,recallUnit:unit});
     return true;
   },
-  notify:message=>{sim.events.add(sim.tick,'Voice order','Pilot decision',message);},
+  notify:(message,outcome)=>presentVoiceOrder(outcome,message),
 });
 function recordVoiceResults(current:Simulation){
   for(const [id,receipt] of voiceReceipts){
@@ -120,16 +124,25 @@ function recordVoiceResults(current:Simulation){
     const commandId=agentController.proposal(id)?.commandId;
     const result=commandId ? current.commandLog.find(command=>command.commandId===commandId) : undefined;
     if(result?.outcome==='accepted'){
-      current.events.add(current.tick,'Voice order','Accepted',receipt.summary);
-      if(receipt.recallUnit)orderQueue.discardImpossible(order=>order.assignments.some(a=>a.unit===receipt.recallUnit));
+      if(receipt.recallUnit)cancelWaitingOrders(order=>order.assignments.some(a=>a.unit===receipt.recallUnit),receipt.summary);
+      presentVoiceOrder('Accepted',receipt.summary);
     }else{
-      current.events.add(current.tick,'Voice order','Rejected',result?.reason??'Order expired before execution.');
+      presentVoiceOrder('Rejected',receipt.summary + ' · ' + (result?.reason ?? 'order expired before execution'));
     }
   }
 }
+function cancelWaitingOrders(matches: (order: OrderQueueRow) => boolean, reason: string) {
+  const ids: string[] = [];
+  orderQueue.discardImpossible(order => {
+    if (!matches(order)) return false;
+    ids.push(order.id);
+    return true;
+  });
+  if (ids.length) presentVoiceOrder('Cancelled',ids.join(', ') + ' · ' + reason);
+}
 function clearWaitingOrders(){
-  voiceSupervisor.clear();
-  orderQueue.discardImpossible(()=>true);
+  voiceSupervisor.dismiss();
+  cancelWaitingOrders(()=>true,'Recall');
 }
 installSupervisorRuntime({getSim:()=>stage==='arena'?sim:null,controller:agentController},{exposeGlobal:qaEnabled||new URLSearchParams(location.search).has('supervisor')});
 const autonomyButton=document.createElement('button');autonomyButton.id='autonomy-toggle';autonomyButton.textContent='Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed','false');arenaActions.append(autonomyButton);
@@ -385,14 +398,15 @@ function loop(now:number){
   const agentCommands=agentController.drain(sim);void before;
   if(gameplayActive()&&sim.tick%15===0&&!commands.length&&!agentCommands.length&&!intents.length){
     const targetAlive=(target:TargetId)=>sim.turrets.some(t=>t.id===target&&t.health>0);
-    orderQueue.discardImpossible(order=>order.assignments.some(a=>!targetAlive(a.target)));
-    orderQueue.dispatch(order=>order.assignments.every(a=>sim.funnels.some(f=>f.id===a.unit&&f.order.type==='RECALL')&&sim.canRouteIntercept(a.unit,a.target)),order=>{
+    cancelWaitingOrders(order=>order.assignments.some(a=>!targetAlive(a.target)),'target unavailable');
+    const dispatched=orderQueue.dispatch(order=>order.assignments.every(a=>sim.funnels.some(f=>f.id===a.unit&&f.order.type==='RECALL')&&sim.canRouteIntercept(a.unit,a.target)),order=>{
       if(!approveVoiceAssignment(sim,order.assignments,order.reason))return false;
       const batch=agentController.drain(sim);
       const accepted=sim.accepted;
       sim.commands(batch);
       return sim.accepted>accepted;
     });
+    if(dispatched)presentVoiceOrder('Accepted',dispatched.id + ' · ' + describeVoiceAssignments(dispatched.assignments));
   }
   const recalls=sim.recalls;
   sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
@@ -576,11 +590,11 @@ if(qaEnabled){
 if(qaEnabled){el('probe').hidden=false;el('probe').onclick=async()=>{const result=el('probe-result');const button=el<HTMLButtonElement>('probe');if(camera.active||camera.loading){result.textContent='Stop the webcam before this synthetic-only check.';return;}button.disabled=true;const unavailable=await checkWebcamAssets();if(unavailable||camera.active||camera.loading){button.disabled=false;result.textContent=unavailable??'Stop the webcam before this synthetic-only check.';return;}result.textContent='Loading local model · blank synthetic image only';const worker=new Worker('/tracking-worker.js');const timeout=setTimeout(()=>{worker.terminate();button.disabled=false;result.textContent='FAIL: local worker timeout';},30000);worker.onerror=()=>{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent='FAIL: worker error';};worker.onmessage=async({data})=>{if(data.type==='ready'){const canvas=new OffscreenCanvas(640,480);canvas.getContext('2d')!.fillRect(0,0,640,480);const bitmap=canvas.transferToImageBitmap();worker.postMessage({type:'frame',bitmap,epoch:0,sequence:1,capturedAt:performance.now()},[bitmap]);}else{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent=data.type==='observation'?`PASS: local model processed blank synthetic image; ${data.hands.length} hands, ${data.processingMs.toFixed(1)} ms (not camera latency)`:'FAIL: '+data.message;}};worker.postMessage({type:'init'});};}
 
 inspector=installInspector(()=>view?.resize(),()=>openSettings(),{
-  promote:id=>{if(gameplayActive())orderQueue.promote(id);},
-  cancel:id=>{orderQueue.cancel(id);},
+  promote:id=>{if(gameplayActive()&&orderQueue.promote(id))presentVoiceOrder('Waiting',id+' promoted');},
+  cancel:id=>{if(orderQueue.cancel(id))presentVoiceOrder('Cancelled',id);},
   confirm:()=>voiceSupervisor.confirm(),
   defer:()=>voiceSupervisor.confirm(true),
-  dismiss:()=>voiceSupervisor.clear(),
+  dismiss:()=>voiceSupervisor.dismiss(),
 })??null;
 el('voice-panel')?.append(createVoiceGuide());
 hud=hudClassic?null:mountHud();if(hud&&qaEnabled)Object.assign(globalThis,{__hudFeed:hudFeed});

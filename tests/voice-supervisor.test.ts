@@ -28,6 +28,17 @@ function setup(workers?: typeof requestDroneWorkers) {
 }
 
 describe('voice supervisor pilot approval', () => {
+  it('reports proposal, approval and dismissal from the Orders flow', async () => {
+    const {supervisor, direct, notify} = setup();
+    await direct('U1', 'T1');
+    expect(notify).toHaveBeenLastCalledWith('U1 to T1 · open Orders', 'Awaiting approval');
+    supervisor.confirm();
+    expect(notify).toHaveBeenLastCalledWith('U1 to T1 · waiting for game', 'Approved');
+    await direct('U2', 'T3');
+    supervisor.dismiss();
+    expect(notify).toHaveBeenLastCalledWith('U2 to T3', 'Cancelled');
+  });
+
   it('proposes the exact drone and target without using the model or moving a drone until confirmed', async () => {
     const workers = vi.fn<typeof requestDroneWorkers>();
     const {sim, submit, direct, supervisor} = setup(workers);

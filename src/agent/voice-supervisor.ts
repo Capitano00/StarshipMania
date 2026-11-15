@@ -55,12 +55,16 @@ type Pending = (
   | (OrderQueuePending & { kind: 'promote' | 'cancel'; orderId: string })
 ) & { stateToken: string };
 
+export type VoiceOrderOutcome = 'Awaiting approval' | 'Approved' | 'Accepted' | 'Waiting' | 'Rejected' | 'Cancelled';
+export const describeVoiceAssignments = (assignments: OrderAssignment[]) =>
+  assignments.map(({unit, target}) => unit + ' to ' + target).join(' · ');
+
 interface Context {
   current: () => Simulation | null;
   queue: OrderQueue;
   submit: (sim: Simulation, assignments: OrderAssignment[], reason: string) => boolean;
   submitRecall: (sim: Simulation, unit: OrderAssignment['unit'], reason: string) => boolean;
-  notify: (message: string) => void;
+  notify: (message: string, outcome: VoiceOrderOutcome) => void;
   workers?: typeof requestDroneWorkers;
 }
 
@@ -97,37 +101,62 @@ export function createVoiceSupervisor(context: Context) {
       currentTask, confirmLabel: deferred ? 'Confirm queue order' : busy.length ? 'Confirm override' : 'Accept assignment',
       deferLabel: busy.length && !deferred ? 'Queue when feasible' : undefined,
     };
+    context.notify(describe(pending) + ' · open Orders', 'Awaiting approval');
     return {
       ok: true, status: 'awaiting_pilot_confirmation', assignments, reason, current_task: currentTask,
       alternatives: busy.length && !deferred ? ['Confirm override', 'Queue when feasible', 'Dismiss'] : ['Confirm', 'Dismiss'],
     };
   }
 
+  function describe(choice: Pending) {
+    if (choice.kind === 'unit-recall') return 'Recall ' + choice.unit;
+    if (choice.kind === 'assignment') return describeVoiceAssignments(choice.assignments);
+    return choice.title;
+  }
+
+  function dismiss() {
+    const choice = pending;
+    clear();
+    if (choice) context.notify(describe(choice), 'Cancelled');
+  }
+
+  function reject(error: string) {
+    context.notify(error, 'Rejected');
+    return unavailable(error);
+  }
+
   function confirm(defer = false) {
     const choice = pending;
     clear();
     const sim = current();
-    if (!choice || !sim || choice.stateToken !== stateToken(sim)) { context.notify('Order expired. Ask again.'); return; }
+    if (!choice) return;
+    const summary = describe(choice);
+    if (!sim || choice.stateToken !== stateToken(sim)) { reject(summary + ' expired. Ask again.'); return; }
     if (choice.kind === 'unit-recall') {
       const sameTask = sim.funnels.find(drone => drone.id === choice.unit)?.assignment === choice.unitRevision;
-      const approved = sameTask && context.submitRecall(sim, choice.unit, choice.reason);
-      context.notify(approved ? `${choice.unit} Recall approved. Awaiting game result.` : 'Drone task changed. Ask again.');
+      if (sameTask && context.submitRecall(sim, choice.unit, choice.reason)) {
+        context.notify(summary + ' · waiting for game', 'Approved');
+      } else reject(summary + ' · drone task changed. Ask again.');
       return;
     }
     if (choice.kind !== 'assignment') {
       const changed = context.queue[choice.kind](choice.orderId);
-      context.notify(changed ? `${choice.orderId} ${choice.kind === 'promote' ? 'promoted' : 'cancelled'}` : 'Order is no longer waiting.');
+      if (changed) context.notify(choice.orderId + (choice.kind === 'promote' ? ' promoted' : ''), choice.kind === 'promote' ? 'Waiting' : 'Cancelled');
+      else reject(choice.orderId + ' is no longer waiting.');
       return;
     }
     if (defer || choice.deferred) {
-      if (choice.assignments.some(a => !sim.turrets.some(t => t.id === a.target && t.health > 0))) { context.notify('A target is no longer available.'); return; }
+      if (choice.assignments.some(a => !sim.turrets.some(t => t.id === a.target && t.health > 0))) { reject(summary + ' · target unavailable.'); return; }
       const queued = context.queue.add(sim.runId, choice.assignments, choice.reason);
-      context.notify(queued ? `${queued.id} queued` : 'Queue unavailable or full.');
+      if (queued) context.notify(queued.id + ' · ' + summary, 'Waiting');
+      else reject(summary + ' · queue unavailable or full.');
       return;
     }
     const feasible = choice.assignments.every((a, i) => sim.canRouteIntercept(a.unit, a.target) &&
       sim.funnels.find(drone => drone.id === a.unit)?.assignment === choice.unitRevisions[i]);
-    context.notify(feasible && context.submit(sim, choice.assignments, choice.reason) ? 'Assignment approved. Awaiting game result.' : 'Arena state changed. Ask for a new assignment.');
+    if (feasible && context.submit(sim, choice.assignments, choice.reason)) {
+      context.notify(summary + ' · waiting for game', 'Approved');
+    } else reject(summary + ' · arena state changed. Ask for a new assignment.');
   }
 
   async function call(name: string, input: unknown) {
@@ -135,65 +164,67 @@ export function createVoiceSupervisor(context: Context) {
     const args = input ?? {};
     if (!spec) return unavailable('Unknown voice tool.');
     const problem = validate(spec.input_schema, args);
-    if (problem) return unavailable(problem);
+    if (problem) return name === 'get_order_queue' ? unavailable(problem) : reject(problem);
     const sim = current();
     if (!sim) return unavailable('Resume a combat round first.');
     const values = args as Record<string, unknown>;
     if (name === 'get_order_queue') return { ok: true, orders: context.queue.rows() };
-    if (values.state_token !== stateToken(sim)) return unavailable('State changed. Read the arena again.');
+    if (values.state_token !== stateToken(sim)) return reject('State changed. Read the arena again.');
     clear();
     if (name === 'request_unit_recall') {
       const unit = values.unit as OrderAssignment['unit'];
       const drone = sim.funnels.find(f => f.id === unit);
-      if (!drone) return unavailable('That drone is unavailable.');
+      if (!drone) return reject('That drone is unavailable.');
       const currentTask = drone.order.type === 'INTERCEPT' ? `${unit} is assigned to ${drone.order.targetId}` : `${unit} is on escort duty`;
       const reason = `Return ${unit} to escort and cancel its waiting assignments.`;
       pending = {
         id: `voice-recall-${generation}`, kind: 'unit-recall', unit, unitRevision: drone.assignment,
         stateToken: stateToken(sim), title: `Recall ${unit}`, reason, currentTask, confirmLabel: `Confirm Recall ${unit}`,
       };
+      context.notify(describe(pending) + ' · open Orders', 'Awaiting approval');
       return { ok: true, status: 'awaiting_pilot_confirmation', unit, reason, current_task: currentTask };
     }
     if (name === 'request_queue_change') {
       const order = context.queue.rows().find(row => row.id === values.id && row.status === 'waiting');
-      if (!order) return unavailable('That order is no longer waiting.');
+      if (!order) return reject('That order is no longer waiting.');
       const operation = values.operation as 'promote' | 'cancel';
       pending = {
         id: `queue-change-${generation}`, kind: operation, orderId: order.id, stateToken: stateToken(sim),
         title: `${operation === 'promote' ? 'Promote' : 'Cancel'} order ${order.id}`,
         reason: order.reason, assignments: order.assignments, confirmLabel: operation === 'promote' ? 'Confirm promotion' : 'Confirm cancellation',
       };
+      context.notify(describe(pending) + ' · open Orders', 'Awaiting approval');
       return { ok: true, status: 'awaiting_pilot_confirmation', order_id: order.id, operation };
     }
     const deferred = values.timing === 'when_feasible';
     if (values.intent === 'defend') {
       const unit = values.unit as OrderAssignment['unit'] | undefined;
-      if (!unit || !sim.funnels.some(drone => drone.id === unit)) return unavailable('Name an available drone to defend.');
+      if (!unit || !sim.funnels.some(drone => drone.id === unit)) return reject('Name an available drone to defend.');
       const target = nearestArmedTurret(sim);
-      if (!target) return unavailable('No active armed turret to defend against.');
-      if (!sim.canRouteIntercept(unit, target)) return unavailable(`${unit} has no route to the nearest armed turret, ${target}.`);
+      if (!target) return reject('No active armed turret to defend against.');
+      if (!sim.canRouteIntercept(unit, target)) return reject(`${unit} has no route to the nearest armed turret, ${target}.`);
       return offer(sim, [{ unit, target }], `${target} is the nearest active armed turret.`, deferred);
     }
     if (values.intent === 'squad') {
       const { u1_target: first, u2_target: second } = values as { u1_target?: TargetId; u2_target?: TargetId };
-      if (!first || !second || first === second) return unavailable('Name a different turret for each drone.');
+      if (!first || !second || first === second) return reject('Name a different turret for each drone.');
       const assignments: OrderAssignment[] = [{unit: 'U1', target: first}, {unit: 'U2', target: second}];
       for (const {unit, target} of assignments) {
         if (!sim.funnels.some(drone => drone.id === unit) || !sim.turrets.some(t => t.id === target && t.health > 0))
-          return unavailable(`${unit} or ${target} is unavailable.`);
-        if (!deferred && !sim.canRouteIntercept(unit, target)) return unavailable(`${unit} has no route to ${target} now.`);
+          return reject(`${unit} or ${target} is unavailable.`);
+        if (!deferred && !sim.canRouteIntercept(unit, target)) return reject(`${unit} has no route to ${target} now.`);
       }
       return offer(sim, assignments, 'Assign both drones together.', deferred);
     }
     if (values.intent === 'direct') {
       const { unit, target } = values as { unit?: OrderAssignment['unit']; target?: TargetId };
-      if (!unit || !target) return unavailable('Name both the drone and turret.');
-      if (!sim.funnels.some(drone => drone.id === unit)) return unavailable('That drone is unavailable.');
-      if (!sim.turrets.some(t => t.id === target && t.health > 0)) return unavailable('That turret is unavailable.');
+      if (!unit || !target) return reject('Name both the drone and turret.');
+      if (!sim.funnels.some(drone => drone.id === unit)) return reject('That drone is unavailable.');
+      if (!sim.turrets.some(t => t.id === target && t.health > 0)) return reject('That turret is unavailable.');
       if (!deferred && !sim.canRouteIntercept(unit, target)) {
         const alternative = units.find(candidate => candidate !== unit && idle(sim, candidate) && sim.canRouteIntercept(candidate, target));
         return {
-          ...unavailable(`${unit} has no route to ${target} now.`),
+          ...reject(`${unit} has no route to ${target} now.`),
           alternatives: alternative ? [`Use ${alternative} for ${target}`, 'Queue exact order', 'Dismiss'] : ['Queue exact order', 'Dismiss'],
         };
       }
@@ -216,7 +247,7 @@ export function createVoiceSupervisor(context: Context) {
       const replacement = target && units.filter(unit => sim.canRouteIntercept(unit, target.id))
         .sort((a, b) => distanceFromDrone(a, target) - distanceFromDrone(b, target))[0];
       return {
-        ...unavailable(available.length ? 'No available drone can reach an unassigned live turret.' : 'Both drones have active orders.'),
+        ...reject(available.length ? 'No available drone can reach an unassigned live turret.' : 'Both drones have active orders.'),
         alternatives: target && replacement ? [`Propose replacing ${replacement}'s task with ${target.id}`, `Queue ${replacement} for ${target.id}`, 'Keep current orders'] : ['Keep current orders'],
       };
     }
@@ -249,17 +280,18 @@ export function createVoiceSupervisor(context: Context) {
         assignments.push({ unit: worker.unit, target });
         reasons.push(`${worker.unit}: ${worker.reason}`);
       }
-      if (!assignments.length) return unavailable('The workers found no available assignment. Try an exact drone and turret or keep current orders.');
+      if (!assignments.length) return reject('The workers found no available assignment. Try an exact drone and turret or keep current orders.');
       return { ...offer(sim, assignments, reasons.join(' · ').slice(0, 160), deferred), provider: result.provider };
     } catch {
-      return unavailable('Drone model workers unavailable. You can still specify a drone and turret.');
+      const reason = 'Drone model workers unavailable. You can still specify a drone and turret.';
+      return generationAtRequest === generation && current() === sim ? reject(reason) : unavailable(reason);
     } finally {
       if (generationAtRequest === generation) request = null;
     }
   }
 
   return {
-    call, clear, confirm, pending: () => pending,
+    call, clear, confirm, dismiss, pending: () => pending,
     clientTools: () => Object.fromEntries(voiceSupervisorSpecs.map(spec => [spec.name, async (input: unknown) => JSON.stringify(await call(spec.name, input))])),
   };
 }

@@ -39,12 +39,13 @@ export const voiceCommandGuide = `
     <p>Resume the game, then select <strong>Start voice</strong> to connect your microphone to ElevenLabs. Voice is optional. The Voice tab shows what the agent heard and how the game responded.</p>
     <dl>
       <dt>“Recall drones”</dt><dd>Return both drones immediately. You can also press R.</dd>
-      <dt>“Scout ahead”</dt><dd>Hear the nearest active threats and which drones are free.</dd>
-      <dt>“Recall U1”</dt><dd>Return one drone to escort and clear its waiting orders.</dd>
+      <dt>“Scout ahead”</dt><dd>Hear a read-only report of nearby threats and available drones in the Voice tab.</dd>
+      <dt>“Recall U1”</dt><dd>Approve in Orders to return one drone to escort and clear its waiting orders. You can also say “Recall U2”.</dd>
       <dt>“U2, defend me”</dt><dd>Propose the nearest active armed turret for U2.</dd>
       <dt>“Send U2 to T3”</dt><dd>Choose a specific drone and target.</dd>
       <dt>“Send U1 to T1 and U2 to T3”</dt><dd>Approve both assignments together.</dd>
-      <dt>“Take the far turret”</dt><dd>Ask the drone workers to suggest an assignment. You can also ask for the near turret.</dd>
+      <dt>“Take the far turret”</dt><dd>Ask the drone workers to suggest an assignment for a distant turret.</dd>
+      <dt>“Take the near turret”</dt><dd>Ask the drone workers for a nearby turret assignment.</dd>
       <dt>“Send U2 to T3 when feasible”</dt><dd>Wait for a matching assignment to become possible.</dd>
       <dt>“Promote order-1” or “Cancel order-1”</dt><dd>Reprioritise or remove a waiting order. Use the ID shown in Orders.</dd>
     </dl>

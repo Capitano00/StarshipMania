@@ -62,6 +62,10 @@ export function installVoiceTranscript(list: HTMLOListElement, result: HTMLEleme
   }
 
   return {
+    showOrderResult(outcome: string, detail: string) {
+      awaitingTool = false;
+      result.textContent = 'Game · ' + outcome + ' · ' + detail;
+    },
     update,
     discardPartial,
     clear() {

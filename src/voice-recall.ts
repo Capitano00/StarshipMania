@@ -101,7 +101,7 @@ export function createVoiceRecall(
           }
           if (event.type === 'user_transcript') {
             const { user_transcript, event_id } = event.user_transcription_event;
-            if (attempt.turn.hear(user_transcript, event_id, performance.now())) {
+            if (attempt.turn.hear(user_transcript, event_id, performance.now()) && recallPhrase.test(user_transcript.trim())) {
               display({ type: 'awaiting-tool' });
             }
           }

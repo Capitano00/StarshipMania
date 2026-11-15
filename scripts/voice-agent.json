@@ -1,0 +1,245 @@
+{
+  "name": "StarshipMania Voice Supervisor",
+  "conversation_config": {
+    "agent": {
+      "first_message": "Supervisor online. Give me an order.",
+      "language": "en",
+      "prompt": {
+        "prompt": "You are StarshipMania's voice supervisor for a fictional arena game. Speak briefly. Ask for clarification for missing drone or turret IDs. Handle clear spoken orders only. For \"Recall drones\" or \"Recall the drones\", call recall_drones. For a named drone, use request_unit_recall with its ID. For Scout or status questions, call get_game_state with event_limit 0 and describe up to two nearest living armed turrets and which drones are following or assigned. Scout is read-only. Before a proposed action, read get_game_state and copy its state_token. For exact assignments call plan_drone_assignment with intent direct, unit and target. For a defend request use intent defend and the named unit. For two named assignments use intent squad, u1_target and u2_target. Use near or far for broad target requests. Set timing to now unless the pilot asks to defer. If asked what orders are waiting, read get_order_queue and report the waiting orders and IDs. For Promote or Cancel, read get_order_queue and request the change by exact ID. If the tool reports a replacement, explain which current task it would replace. Direct the pilot to Orders to approve any change except all-drone Recall. Say an order was proposed or approved at that stage. Report execution only when game state or the game result confirms it. Fire is a separate pilot permission. Questions, quotations and negated requests never trigger a change.",
+        "tools": [
+          {
+            "type": "client",
+            "name": "recall_drones",
+            "description": "Recall both drones to the pilot. Only for a fresh spoken \"Recall drones\" or \"Recall the drones\".",
+            "expects_response": true,
+            "response_timeout_secs": 10,
+            "parameters": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          },
+          {
+            "type": "client",
+            "name": "get_game_state",
+            "description": "Read the arena: drones, turrets, orders and the state_token.",
+            "expects_response": true,
+            "response_timeout_secs": 10,
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "event_limit": {
+                  "type": "integer",
+                  "description": "Recent events to include, 0-20."
+                }
+              },
+              "required": []
+            }
+          },
+          {
+            "type": "client",
+            "name": "plan_drone_assignment",
+            "description": "Propose a drone assignment for pilot approval in Orders.",
+            "expects_response": true,
+            "response_timeout_secs": 25,
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "intent": {
+                  "type": "string",
+                  "description": "direct, near, far, defend or squad.",
+                  "enum": [
+                    "direct",
+                    "near",
+                    "far",
+                    "defend",
+                    "squad"
+                  ]
+                },
+                "timing": {
+                  "type": "string",
+                  "description": "now unless the pilot asks to defer.",
+                  "enum": [
+                    "now",
+                    "when_feasible"
+                  ]
+                },
+                "state_token": {
+                  "type": "string",
+                  "description": "Copy state_token from the latest get_game_state result."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Drone ID.",
+                  "enum": [
+                    "U1",
+                    "U2"
+                  ]
+                },
+                "target": {
+                  "type": "string",
+                  "description": "Turret for a direct assignment.",
+                  "enum": [
+                    "T1",
+                    "T2",
+                    "T3",
+                    "T4",
+                    "T5",
+                    "T6"
+                  ]
+                },
+                "u1_target": {
+                  "type": "string",
+                  "description": "U1 turret for a squad.",
+                  "enum": [
+                    "T1",
+                    "T2",
+                    "T3",
+                    "T4",
+                    "T5",
+                    "T6"
+                  ]
+                },
+                "u2_target": {
+                  "type": "string",
+                  "description": "U2 turret for a squad.",
+                  "enum": [
+                    "T1",
+                    "T2",
+                    "T3",
+                    "T4",
+                    "T5",
+                    "T6"
+                  ]
+                }
+              },
+              "required": [
+                "intent",
+                "timing",
+                "state_token"
+              ]
+            }
+          },
+          {
+            "type": "client",
+            "name": "request_unit_recall",
+            "description": "Request recall of one named drone; the pilot confirms in Orders.",
+            "expects_response": true,
+            "response_timeout_secs": 10,
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "unit": {
+                  "type": "string",
+                  "description": "Drone ID.",
+                  "enum": [
+                    "U1",
+                    "U2"
+                  ]
+                },
+                "state_token": {
+                  "type": "string",
+                  "description": "Copy state_token from the latest get_game_state result."
+                }
+              },
+              "required": [
+                "unit",
+                "state_token"
+              ]
+            }
+          },
+          {
+            "type": "client",
+            "name": "get_order_queue",
+            "description": "Read waiting orders and their IDs.",
+            "expects_response": true,
+            "response_timeout_secs": 10,
+            "parameters": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          },
+          {
+            "type": "client",
+            "name": "request_queue_change",
+            "description": "Request promote or cancel of a waiting order by exact ID; the pilot confirms in Orders.",
+            "expects_response": true,
+            "response_timeout_secs": 10,
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Order ID, e.g. order-1."
+                },
+                "operation": {
+                  "type": "string",
+                  "description": "promote or cancel.",
+                  "enum": [
+                    "promote",
+                    "cancel"
+                  ]
+                },
+                "state_token": {
+                  "type": "string",
+                  "description": "Copy state_token from the latest get_game_state result."
+                }
+              },
+              "required": [
+                "id",
+                "operation",
+                "state_token"
+              ]
+            }
+          },
+          {
+            "type": "client",
+            "name": "get_task_status",
+            "description": "Read progress of a drone task.",
+            "expects_response": true,
+            "response_timeout_secs": 10,
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "task_id": {
+                  "type": "string",
+                  "description": "Task ID."
+                }
+              },
+              "required": []
+            }
+          },
+          {
+            "type": "client",
+            "name": "get_recent_events",
+            "description": "Read recent game events.",
+            "expects_response": true,
+            "response_timeout_secs": 10,
+            "parameters": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          }
+        ]
+      }
+    },
+    "conversation": {
+      "client_events": [
+        "audio",
+        "interruption",
+        "user_transcript",
+        "agent_response",
+        "agent_response_correction",
+        "agent_chat_response_part",
+        "client_tool_call"
+      ]
+    }
+  },
+  "platform_settings": {
+    "auth": {
+      "enable_auth": true
+    }
+  }
+}

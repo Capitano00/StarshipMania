@@ -1,5 +1,19 @@
 # Local ElevenLabs Recall
 
+## Create your own voice agent
+
+The team's supervisor agent settings are in `scripts/voice-agent.json`: the system prompt, the client tools and the client events. The file contains no keys. Each teammate creates their own private copy with their own key:
+
+1. In ElevenLabs, open **Developers → API Keys** and create a restricted key. Set **ElevenAgents** to **Write** and leave everything else on **No Access**. Never paste the key into chat or commit it.
+2. From the checkout, run `& ./scripts/create-voice-agent.ps1` and enter the key at the hidden prompt. It prints the new `agent_…` ID.
+3. Optional: to enable "take the far/near turret", install Ollama (`winget install Ollama.Ollama`) and run `ollama pull qwen3.5:2b-q4_K_M`.
+4. Run `npm ci` and `npm run build`, then start the game with voice using the printed command. The command has this form:
+   `& ./scripts/start-voice.ps1 -AgentId agent_YOUR_ID -Port 4186 -DroneWorkerProvider ollama`
+
+The agent registers every tool from the expanded voice-commands branch. Builds that lack a tool simply don't answer that call.
+
+## Run with an existing agent
+
 Use Node 24. From the StarshipMania checkout run `npm ci` and `npm run build`, then start the voice-enabled local preview in PowerShell:
 
 ```powershell

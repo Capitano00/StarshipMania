@@ -1,4 +1,4 @@
-import {arenaBounds,placed} from './arena-layout';
+import {arenaBounds,placed,type ArenaBounds} from './arena-layout';
 import {clamp,type Vec2} from './contracts';
 export type Barrier={id:string;minX:number;maxX:number;minY:number;maxY:number;height:number};
 export const barriers:readonly Barrier[]=[[-10.5,0],[0,-7.5],[10.5,0]].map(([x,y],i)=>({id:`B${i+1}`,minX:x-3,maxX:x+3,minY:y-.625,maxY:y+.625,height:2}));
@@ -30,12 +30,12 @@ export function firstBarrier(a:Vec2,b:Vec2,r=0,walls=barriers){
 }
 export const clearLine=(a:Vec2,b:Vec2,r=0,walls=barriers)=>firstBarrier(a,b,r,walls)===null;
 export type MotionSegment={from:Vec2;to:Vec2;start:number;end:number};
-export function slidePath(position:Vec2,delta:Vec2,r=.85,walls=barriers):{position:Vec2;segments:MotionSegment[]} {
+export function slidePath(position:Vec2,delta:Vec2,r=.85,walls=barriers,bounds:ArenaBounds=arenaBounds):{position:Vec2;segments:MotionSegment[]} {
   let p={...position},remaining={...delta},time=0;const segments:MotionSegment[]=[];
   for(let i=0;i<3;i++){
     const end={x:p.x+remaining.x,y:p.y+remaining.y};let hit:{t:number;normal:Vec2;boundary?:boolean}|null=firstBarrier(p,end,r,walls);
     // Boundaries consume only their actual fraction of the tick, then slide/stop.
-    for(const axis of ['x','y'] as const)if(Math.abs(end[axis])>arenaBounds.mechLimit&&remaining[axis]!==0){const sign=Math.sign(remaining[axis]),t=Math.max(0,(sign*arenaBounds.mechLimit-p[axis])/remaining[axis]);if(t<=1&&(!hit||t<hit.t))hit={t,boundary:true,normal:axis==='x'?{x:-sign,y:0}:{x:0,y:-sign}};}
+    for(const axis of ['x','y'] as const)if(Math.abs(end[axis])>bounds.mechLimit&&remaining[axis]!==0){const sign=Math.sign(remaining[axis]),t=Math.max(0,(sign*bounds.mechLimit-p[axis])/remaining[axis]);if(t<=1&&(!hit||t<hit.t))hit={t,boundary:true,normal:axis==='x'?{x:-sign,y:0}:{x:0,y:-sign}};}
     if(!hit){segments.push({from:{...p},to:end,start:time,end:1});return {position:end,segments};}
     const t=Math.max(0,hit.t-(hit.boundary?0:EPS)),next={x:p.x+(end.x-p.x)*t,y:p.y+(end.y-p.y)*t},until=time+(1-time)*hit.t;
     if(until>time)segments.push({from:{...p},to:next,start:time,end:until});p=next;time=until;
@@ -53,11 +53,11 @@ export function movingImpact(start:Vec2,end:Vec2,path:readonly MotionSegment[],r
   if(local!==null){const time=segment.start+(segment.end-segment.start)*local;if(earliest===null||time<earliest)earliest=time;}
  }return earliest;
 }
-export function freePoint(desired:Vec2,r=.55,walls=barriers):Vec2|null {
-  const p={x:clamp(desired.x,-arenaBounds.unitLimit,arenaBounds.unitLimit),y:clamp(desired.y,-arenaBounds.unitLimit,arenaBounds.unitLimit)},boxes=walls.map(w=>expand(w,r));
+export function freePoint(desired:Vec2,r=.55,walls=barriers,bounds:ArenaBounds=arenaBounds):Vec2|null {
+  const p={x:clamp(desired.x,-bounds.unitLimit,bounds.unitLimit),y:clamp(desired.y,-bounds.unitLimit,bounds.unitLimit)},boxes=walls.map(w=>expand(w,r));
   const candidates=[p];
   for(const b of boxes)if(inside(p,b))candidates.push({x:b.minX-EPS,y:p.y},{x:b.maxX+EPS,y:p.y},{x:p.x,y:b.minY-EPS},{x:p.x,y:b.maxY+EPS});
-  return candidates.filter(c=>Math.abs(c.x)<=arenaBounds.unitLimit&&Math.abs(c.y)<=arenaBounds.unitLimit&&!boxes.some(b=>inside(c,b))).sort((a,b)=>length(a,p)-length(b,p))[0]??null;
+  return candidates.filter(c=>Math.abs(c.x)<=bounds.unitLimit&&Math.abs(c.y)<=bounds.unitLimit&&!boxes.some(b=>inside(c,b))).sort((a,b)=>length(a,p)-length(b,p))[0]??null;
 }
 /** Small deterministic visibility graph; called on destination changes, never every tick. */
 export function route(start:Vec2,end:Vec2,r=.55,walls=barriers):Vec2[]|null {

@@ -16,6 +16,8 @@ Open http://127.0.0.1:4180/. The strict loopback preview applies the document an
 2. Choose **Training** to practise deployments, firing and Recall against indestructible targets with no incoming damage. **Control test and help** on Prepare offers a separate input test and command reference.
 3. Press Space to pause or resume. Retry preserves your setup and resets the round. Fire at Will starts off.
 
+**Orbital Relay** is a separate carrier mission. Launch through the marked gate, clear T1 and T3, hold between the violet relay towers for two seconds, then return to the amber extraction pad. The objective shows a compass heading and distance, and the minimap marks the active waypoint. Use the centre lane for a shorter approach or weave around deck cover. Enable **Mission sounds** in Prepare or Settings to hear a short cue at each milestone.
+
 Keyboard play uses the game’s synthetic hand observations and requires no webcam or model files.
 
 ## Optional voice commands

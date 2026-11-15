@@ -28,13 +28,14 @@ import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
 import {createVoiceRecall} from './voice-recall';
+import {CarrierAudio} from './carrier-audio';
 import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
 <header><span class="brand">Starship<span>Mania</span></span><div class="privacy"><i></i><span id="privacy-mode">CAMERA AND MIC OFF</span></div></header>
 <main>${titleScreen}<section id="setup" class="setup" aria-labelledby="prepare-heading" hidden>${prepareIntro}
-<div class="prepare-choices"><button id="quick-keyboard" class="primary">Play with keyboard</button><button id="activate">Activate webcam</button></div>
+<div class="prepare-choices"><button id="quick-keyboard" class="primary">Play with keyboard</button><button id="activate">Activate webcam</button><button id="prepare-carrier-sound" type="button" aria-pressed="false" hidden>Mission sounds</button></div>
 <p class="prepare-choice-note">WASD moves, arrow keys aim, J fires the mech, H fires assigned drones, K deploys and R recalls. Your webcam is optional and processes images on this device.</p>
 <p id="arena-error" role="alert" hidden></p>
 <div id="prepare-launch" class="prepare-launch" hidden><p>Controls ready.</p><button id="enter" class="primary" disabled>Enter arena</button><button id="train" class="primary" disabled hidden>Start training</button></div>
@@ -68,6 +69,22 @@ const guideButton=document.createElement('button');guideButton.id='open-gesture-
 const recognitionPanel=document.createElement('fieldset');recognitionPanel.id='recognition-presets';recognitionPanel.innerHTML='<legend>Recognition confidence · adjust while paused</legend>'+(['Left','Right'] as const).map(side=>`<label for="preset-${side}">${side} hand <select id="preset-${side}">${Object.entries(recognitionPresets).map(([name,p])=>`<option value="${name}" ${name==='Balanced'?'selected':''}>${name} (${p.enter.toFixed(2)} / ${p.retain.toFixed(2)})</option>`).join('')}</select></label>`).join('')+'<small>Enter / retain score. Separate from palm sensitivity. Session only.</small>';el('calibration-guide').append(recognitionPanel);
 const settingsButton=document.createElement('button');settingsButton.id='settings';settingsButton.hidden=true;settingsButton.textContent='Settings';el('back').after(settingsButton);
 el('settings-diagnostics').after(createVoiceGuide());
+const carrierAudio = new CarrierAudio();
+const carrierSoundSetting = document.createElement('button');
+carrierSoundSetting.type = 'button';
+carrierSoundSetting.textContent = 'Mission sounds';
+carrierSoundSetting.setAttribute('aria-pressed', 'false');
+el('settings-diagnostics').after(carrierSoundSetting);
+const carrierSoundButtons = [el<HTMLButtonElement>('prepare-carrier-sound'), carrierSoundSetting];
+for (const button of carrierSoundButtons) button.onclick = async () => {
+  for (const toggle of carrierSoundButtons) toggle.disabled = true;
+  const updated = await carrierAudio.toggle();
+  for (const toggle of carrierSoundButtons) {
+    toggle.setAttribute('aria-pressed', String(carrierAudio.enabled));
+    toggle.textContent = updated ? 'Mission sounds' : 'Mission sounds unavailable';
+    toggle.disabled = false;
+  }
+};
 const trainingPanel=document.createElement('section');trainingPanel.id='training-panel';trainingPanel.hidden=true;trainingPanel.innerHTML='<strong>PADISARAH TRAINING · no enemy fire · indestructible targets</strong><p id="training-step" role="status" aria-live="polite"></p><p id="training-help"></p><div class="buttons"><button id="retry-training">Retry practice</button><button id="leave-training">Leave practice · enter arena</button></div>';el('arena').append(trainingPanel);
 const resultsPanel=document.createElement('section');resultsPanel.id='results-panel';resultsPanel.hidden=true;resultsPanel.setAttribute('aria-labelledby','results-title');resultsPanel.innerHTML='<h2 id="results-title"></h2><p id="results-counts"></p><div class="buttons"><button id="play-again" class="primary">Play again</button><button id="results-training">Training</button><button id="results-settings">Settings</button><button id="results-menu">Main menu</button></div>';el('arena').append(resultsPanel);
 const objective=document.createElement('p');
@@ -171,20 +188,20 @@ function recall(source:'local-keyboard-recall'|'local-voice-recall'='local-keybo
   return true;
 }
 function cancelCommand(){logCancellation('Explicit cancel');resumeIntent.cancel();calibration.cancel();controls.cancel(performance.now());clearPending();if(sim.mode==='training')sim.message='Command cancelled; open the bound hand or confirm a different pose for 80 ms to rearm';}
-function resetRound(mode:'combat'|'training'){
+function resetRound(mode:'combat'|'training',carrier=false){
   stopVoice();
   inspector?.voiceTranscript.clear();
   // Retire old input and its events against the old run, never against its replacement.
   controls.restart();clearPending();
-  resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode);sim.preferredPolicy=preferredPolicy;commandId=0;
+  resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode,2,carrier);sim.preferredPolicy=preferredPolicy;commandId=0;
   orderQueue.reset(sim.runId);
   keys.clear();qaMissingHands.clear();syntheticAim={x:0,y:0};syntheticLoss=false;clock.reset();resultsShown=false;
 }
-function startRound(mode:'combat'|'training'){
+function startRound(mode:'combat'|'training',carrier=false){
   if(settingsOpen||renderState==='lost')return;
-  renderState='ready';renderMessage='';resetRound(mode);enterArena(mode);if(stage==='arena')resume();
+  renderState='ready';renderMessage='';resetRound(mode,carrier);enterArena(mode,carrier);if(stage==='arena')resume();
 }
-function restart(){if(stage==='arena'){startRound(sim.mode);return;}if(settingsOpen||renderState==='lost')return;renderState='ready';renderMessage='';resetRound('combat');}
+function restart(){if(stage==='arena'){startRound(sim.mode,Boolean(sim.mission));return;}if(settingsOpen||renderState==='lost')return;renderState='ready';renderMessage='';resetRound('combat');}
 function closeSettings(){
   if(!settingsOpen)return;settingsOpen=false;calibration.cancel();pause();settings.close();
   el(stage==='arena'?'paused-settings':'calibration-home').append(el('calibration-guide'));
@@ -210,11 +227,12 @@ function showPrepare(mode:PlayMode=prepareMode){
   const training=mode==='training';
   el('title-screen').hidden=true;
   el('setup').hidden=false;
-  el('prepare-heading').textContent=training?'Prepare for training':'Prepare to play';
-  el('prepare-objective').textContent=training?'Practise deployment, firing and Recall with no incoming damage.':'Clear six targets and keep your mech operational.';
+  el('prepare-heading').textContent=training?'Prepare for training':mode==='carrier'?'Prepare for Orbital Relay':'Prepare to play';
+  el('prepare-objective').textContent=training?'Practise deployment, firing and Recall with no incoming damage.':mode==='carrier'?'Launch from the carrier, recover a relay, and return to extract.':'Clear six targets and keep your mech operational.';
   el('quick-keyboard').textContent=training?'Train with keyboard':'Play with keyboard';
   el('enter').hidden=training;
   el('train').hidden=!training;
+  el('prepare-carrier-sound').hidden=mode!=='carrier';
   el('prepare-heading').focus();
 }
 function showTitle(){
@@ -224,16 +242,17 @@ function showTitle(){
   cameraSetupRequested=false;
   el('setup').hidden=true;
   el('title-screen').hidden=false;
-  el(prepareMode==='training'?'title-training':'title-play').focus();
+  el(prepareMode==='training'?'title-training':prepareMode==='carrier'?'title-carrier':'title-play').focus();
 }
 el('title-play').onclick=()=>showPrepare('combat');
+el('title-carrier').onclick=()=>showPrepare('carrier');
 el('title-training').onclick=()=>showPrepare('training');
 el('title-settings').onclick=openSettings;
 el('return-title').onclick=showTitle;
 el('menu-title').onclick=showTitle;
 el('results-menu').onclick=showTitle;
 el('train').onclick=()=>{if(controls.calibrated)startRound('training');};el('results-training').onclick=()=>startRound('training');
-el('retry-training').onclick=()=>startRound('training');el('leave-training').onclick=()=>startRound('combat');el('play-again').onclick=()=>startRound('combat');
+el('retry-training').onclick=()=>startRound('training');el('leave-training').onclick=()=>startRound('combat');el('play-again').onclick=()=>startRound('combat',Boolean(sim.mission));
 function calibrate(){if(calibration.pending||document.hidden||cameraUnavailable())return;if(!controls.paused){controls.reason='Pause before recentering';return;}pause();calibration.start(performance.now(),controls);}
 el('activate').onclick=()=>{
   if(stage==='controls'&&el('setup').hidden)showPrepare();
@@ -252,16 +271,16 @@ el('quick-keyboard').onclick=()=>{
   // Keyboard input can establish neutral from a fresh synthetic sample immediately.
   const now=performance.now();
   synthetic(now);
-  if(controls.calibrate(now))startRound(prepareMode);
+  if(controls.calibrate(now))startRound(prepareMode==='training'?'training':'combat',prepareMode==='carrier');
 };
 el('calibrate').onclick=calibrate;el('test-controls').onclick=()=>resume();
 el('start-practice').onclick=()=>resume();el('pause-practice').onclick=pause;el('cancel-practice').onclick=pause;el('cancel-resume').onclick=pause;
 el('recalibrate-practice').onclick=calibrate;
 el('cancel-calibration').onclick=()=>calibration.cancel();
-function enterArena(mode:'combat'|'training'='combat'){
+function enterArena(mode:'combat'|'training'='combat',carrier=false){
   if(settingsOpen||!controls.calibrated||renderState!=='ready')return;
-  calibration.cancel();pause();if(sim.mode!==mode)resetRound(mode);
-  if(!view){try{view=new ArenaView(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return;}}
+  calibration.cancel();pause();if(sim.mode!==mode||Boolean(sim.mission)!==carrier)resetRound(mode,carrier);
+  if(!view){try{view=new ArenaView(el<HTMLCanvasElement>('scene'),hudClassic);}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return;}}
   if(!fx&&!hudClassic&&view.scene){try{fx=new ArenaFx(view.scene,view.renderer);}catch{fx=null;}}
   renderMessage='';stage='arena';showCameraDuringPlay=false;trackingPreview.setVisible(false);
   el('arena').append(el('tracking-preview'));el('paused-settings').append(el('calibration-guide'));el('title-screen').hidden=true;el('setup').hidden=true;el('arena').hidden=false;
@@ -269,7 +288,7 @@ function enterArena(mode:'combat'|'training'='combat'){
   el('arena').classList.toggle('is-training',mode==='training');sizeArena();
   const scene=el('scene');scene.tabIndex=-1;scene.focus();
 }
-el('enter').onclick=()=>enterArena();
+el('enter').onclick=()=>enterArena('combat',prepareMode==='carrier');
 el('scene').addEventListener('webglcontextlost',event=>{event.preventDefault();calibration.cancel();renderState='lost';renderMessage='Graphics context lost · simulation frozen. Wait for graphics recovery, then Restart.';keys.clear();qaMissingHands.clear();replayStart=null;pause();});
 el('scene').addEventListener('webglcontextrestored',()=>{if(renderState!=='lost')return;renderState='restart-required';renderMessage='Graphics recovered · Restart is required before resuming.';pause();});
 el('back').onclick=()=>{calibration.cancel();pause();stage='controls';trackingPreview.setVisible(true);el('tracking-home').append(el('tracking-preview'));el('calibration-home').append(el('calibration-guide'));el('arena').hidden=true;showPrepare();};
@@ -363,8 +382,9 @@ function loop(now:number){
       return sim.accepted>accepted;
     });
   }
-  const recalls=sim.recalls;
+  const recalls=sim.recalls, phaseBefore=sim.mission?.phase;
   sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  if (sim.mission && sim.mission.phase !== phaseBefore) carrierAudio.play(sim.mission.phase);
   if(sim.recalls>recalls)clearWaitingOrders();
   // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
   if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
@@ -418,12 +438,16 @@ function loop(now:number){
   el('hit-feedback').textContent=sim.lastHit&&sim.tick-sim.lastHit.tick<90?`${sim.lastHit.team==='funnel'?'Padisarah':'Pilot'} hit ${sim.lastHit.target} · collision confirmed`:'';
   el('training-panel').hidden=stage!=='arena'||sim.mode!=='training';
   el('training-step').textContent=source==='synthetic'?keyboardTrainingPrompt(sim.trainingStep,session.autofire):sim.trainingInstruction+([0,2].includes(sim.trainingStep)?' '+actionLabel('deploy'):sim.trainingStep===1?' '+(session.autofire?'AUTO FIRE ON':actionLabel('padisarahFire')):sim.trainingStep===3?' '+actionLabel('recall'):'');
-  el('arena-title').textContent=sim.mode==='training'?'Practise deployment. No combat damage.':'Clear all six targets.';
+  const currentObjective = sim.mission?.objective(sim.missionGuardsRemaining) ?? 'Clear all six targets.';
+  el('arena-title').textContent = sim.mode==='training' ? 'Practise deployment. No combat damage.' : currentObjective;
+  const navigation = sim.mission?.navigation(sim.position);
+  const objectiveDisplay = navigation ? `${currentObjective} · ${navigation}` : currentObjective;
+  if (objective.textContent !== objectiveDisplay) objective.textContent = objectiveDisplay;
   objective.hidden=sim.mode==='training'||sim.outcome!=='playing';
   el('training-help').textContent=controls.paused?(sim.trainingStep===5?'Repeat practice or enter combat when ready.':`Paused · ${resumeIntent.message(now)||controls.reason} · choose Resume when ready.`):sim.message;
   el('retry-training').textContent=sim.trainingStep===5?'Repeat practice':'Retry practice';
   const showResults=stage==='arena'&&sim.outcome!=='playing';el('results-panel').hidden=!showResults;
-  el('results-title').textContent=sim.outcome==='won'?'Arena clear.':'Mech disabled.';
+  el('results-title').textContent=sim.outcome==='won'?(sim.mission?'Relay recovered.':'Arena clear.'):'Mech disabled.';
   const stats=sim.results;el('results-counts').textContent=`Targets cleared ${stats.turretsCleared} / ${sim.turrets.length} · Accepted deployments ${stats.deployments} · Recalls ${stats.recalls} · Padisarah hits ${stats.padisarahHits}`;
   if(showResults&&!resultsShown&&!settingsOpen)el('play-again').focus();resultsShown=showResults;
   const dwell=controls.commandProgress;

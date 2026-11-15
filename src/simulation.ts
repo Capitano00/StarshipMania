@@ -2,6 +2,11 @@ import {arenaBounds} from './arena-layout';
 import {clamp,finitePoint,neutralFrame,targetIds,type ActionIntent,type ActionPayload,type DronePolicy,type DashKind,type CommandEnvelope,type CommandGroup,type Order,type SquadOrder,pilotProvenances,type PilotControlFrame,type TargetId,type Vec2} from './contracts';
 import {barriers,clearLine,firstBarrier,freePoint,length,route,slidePath,movingImpact,sweepCircle} from './cover';
 import {RoundEvents} from './round-events';
+/**
+ * Arena turret roster (T1–T6). Positions are arena units; the pilot spawns at (0,15).
+ * `armed:false` turrets never shoot back (training mode disarms all of them); a non-empty `patrol` makes the turret walk
+ * between those waypoints instead of standing still.
+ */
 export const actorDefinitions=[
  {id:'T1',position:{x:-13.5,y:-10.5},armed:true,patrol:[]},
  {id:'T2',position:{x:0,y:-18},armed:true,patrol:[]},

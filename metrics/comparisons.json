@@ -1,0 +1,95 @@
+{
+ "about": "Before/after comparisons shown on the metrics page. See metrics/README.md for how to add numbers. null = not measured yet; \"n/a\" = the before version cannot do this at all.",
+ "comparisons": [
+  {
+   "id": "supervisor-agent",
+   "title": "Supervisor agent",
+   "summary": "An AI supervisor commands the drones through seven tools; the pilot grants autonomy and can always override. Rounds use a scripted supervisor that re-plans every second. Build and download numbers cover everything merged from main, including voice Recall.",
+   "before": {
+    "label": "Pilot commands drones by gesture",
+    "snapshot": "before-integrations",
+    "performanceRun": "after-lazy-three"
+   },
+   "after": {
+    "label": "Supervisor agent with autonomy",
+    "snapshot": "after-main-merge",
+    "performanceRun": "supervisor-live"
+   },
+   "agentBenchmark": "supervisor",
+   "metrics": []
+  },
+  {
+   "id": "voice-agent",
+   "title": "Voice agent for motion control",
+   "summary": "Voice proposes Deploy, Recall and Fire at Will orders. The simulation still decides, and Recall keeps priority.",
+   "before": {
+    "label": "Hand gestures and keyboard only",
+    "snapshot": "before-integrations",
+    "performanceRun": "after-lazy-three"
+   },
+   "after": {
+    "label": "With the voice agent",
+    "snapshot": null,
+    "performanceRun": null
+   },
+   "agentBenchmark": "voice",
+   "metrics": [
+    {
+     "name": "Minimum time to issue Deploy or Recall",
+     "unit": "ms",
+     "better": "lower",
+     "before": 500,
+     "after": null,
+     "note": "Before: the gesture must be held for COMMAND_HOLD_MS (500 ms). After: end of speech to order accepted."
+    },
+    {
+     "name": "Recall-priority checks passing",
+     "unit": "%",
+     "better": "higher",
+     "before": null,
+     "after": null,
+     "note": "Recall must still beat a pending or voice-issued order. Run the same Recall checks on both versions."
+    }
+   ]
+  },
+  {
+   "id": "hud-effects",
+   "title": "Tactical HUD and arena effects",
+   "summary": "A hologram HUD with drone tags, voice and agent feedback, plus presentation-only arena effects. Measures what they cost to download and run.",
+   "before": {
+    "label": "Supervisor agent without the HUD",
+    "snapshot": "after-main-merge",
+    "performanceRun": "supervisor-live"
+   },
+   "after": {
+    "label": "With the HUD and effects",
+    "snapshot": "after-hud",
+    "performanceRun": "after-hud"
+   },
+   "metrics": []
+  },
+  {
+   "id": "lazy-three",
+   "title": "Loading the 3D engine on demand",
+   "summary": "Three.js now downloads in the background after the setup screen appears, instead of before it.",
+   "before": {
+    "label": "Three.js in the first download",
+    "performanceRun": "before-lazy-three"
+   },
+   "after": {
+    "label": "Three.js loaded on demand",
+    "performanceRun": "after-lazy-three"
+   },
+   "metrics": [
+    {
+     "name": "First-load JS (gzip)",
+     "unit": "kB",
+     "better": "lower",
+     "before": 171,
+     "after": 39,
+     "note": "Measured from the production build"
+    }
+   ]
+  }
+ ]
+}

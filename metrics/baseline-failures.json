@@ -1,0 +1,12 @@
+{
+ "source": "ProjectZero v0.4.3 import (README: 71 inherited failures)",
+ "recorded": "2026-11-14",
+ "pruned": "2026-11-15",
+ "fixedSinceImport": 67,
+ "failures": [
+  "tests/camera.test.ts > synthetic camera lifecycle mocks — never opens a real camera missing deliveries despite advancing playback neutralize and then pause running controls",
+  "tests/guided-calibration.test.ts > one deliberate paired check shares readiness and captures only while paused expiry wins at 13 seconds, explains blocker, and requires deliberate full Retry",
+  "tests/resume-intent.test.ts > stale and pinched pairs wait; the next moving open pair recenters immediately",
+  "tests/tracking-worker.test.ts > does not promote low confidence or empty model observations to accepted tracking"
+ ]
+}

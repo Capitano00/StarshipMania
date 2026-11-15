@@ -6,7 +6,7 @@ import './style.css';
 import './player-interface.css';
 import {keyboardTrainingPrompt,prepareIntro,titleScreen,voiceCommandGuide,type PlayMode} from './player-interface';
 // StarshipMania tactical HUD + arena effects (presentation only; `?classic` restores the original look).
-import {ArenaFx} from './fx/arena-fx';
+import type {ArenaFx} from './fx/arena-fx';
 import {mountHud,type HudHandle} from './hud/hud';
 import {hudFeed} from './hud/feed';
 import {demoRequested,startHudDemo} from './hud/demo';
@@ -28,11 +28,11 @@ import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
 import {createVoiceRecall} from './voice-recall';
-import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
+import {Controls,type Observation} from './controls';import {Simulation,FixedClock} from './simulation';import {CameraInput,captureBitmap} from './camera';import type {ArenaView} from './view';import {clamp,type ActionIntent,type DronePolicy,type CommandEnvelope,type TargetId} from './contracts';
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
-<header><span class="brand">Starship<span>Mania</span></span><div class="privacy"><i></i><span id="privacy-mode">CAMERA AND MIC OFF</span></div></header>
+<header><span class="brand">Starship<span>Mania</span></span><div class="privacy"><i></i><span id="privacy-mode">CAMERA AND MIC OFF</span></div><a class="metrics-link" href="/metrics.html" target="_blank" rel="noopener">Metrics ↗</a></header>
 <main>${titleScreen}<section id="setup" class="setup" aria-labelledby="prepare-heading" hidden>${prepareIntro}
 <div class="prepare-choices"><button id="quick-keyboard" class="primary">Play with keyboard</button><button id="activate">Activate webcam</button></div>
 <p class="prepare-choice-note">WASD moves, arrow keys aim, J fires the mech, H fires assigned drones, K deploys and R recalls. Your webcam is optional and processes images on this device.</p>
@@ -137,6 +137,11 @@ let replayStart:number|null=null,replayCaptured=false,replayResumed=false,replay
 let qaAim:TargetId|null=null,qaV02Running=false;
 let replayEvidence={practice:false,movement:false,fire:false,intercept:false,recall:false};
 const video=document.createElement('video');let view:ArenaView|null=null;
+// Three.js is only imported by the arena view and its effects layer, so loading both on demand keeps it out of the first-load bundle.
+let ArenaViewClass:typeof ArenaView|null=null,ArenaFxClass:typeof ArenaFx|null=null,arenaViewLoad:Promise<typeof ArenaView>|null=null;
+function loadArenaView(){return arenaViewLoad??=Promise.all([import('./view'),import('./fx/arena-fx')]).then(([view,effects])=>{ArenaFxClass=effects.ArenaFx;return ArenaViewClass=view.ArenaView;},error=>{arenaViewLoad=null;throw error;});}
+// Fetch the arena graphics in the background once setup is idle, so Enter arena rarely has to wait.
+function scheduleArenaPreload(){const preload=()=>void loadArenaView().catch(()=>{});if('requestIdleCallback' in window)requestIdleCallback(preload,{timeout:2000});else setTimeout(preload,500);}
 const trackingPreview=new TrackingPreview(el<HTMLCanvasElement>('camera-preview'),el('camera-feedback'));let showCameraDuringPlay=false;
 let renderState:'ready'|'lost'|'restart-required'='ready',renderMessage='';
 let settingsOpen=false,settingsFocus:HTMLElement|null=null,resultsShown=false;
@@ -182,7 +187,7 @@ function resetRound(mode:'combat'|'training'){
 }
 function startRound(mode:'combat'|'training'){
   if(settingsOpen||renderState==='lost')return;
-  renderState='ready';renderMessage='';resetRound(mode);enterArena(mode);if(stage==='arena')resume();
+  renderState='ready';renderMessage='';resetRound(mode);enterArena(mode,()=>{if(stage==='arena')resume();});
 }
 function restart(){if(stage==='arena'){startRound(sim.mode);return;}if(settingsOpen||renderState==='lost')return;renderState='ready';renderMessage='';resetRound('combat');}
 function closeSettings(){
@@ -258,18 +263,20 @@ el('calibrate').onclick=calibrate;el('test-controls').onclick=()=>resume();
 el('start-practice').onclick=()=>resume();el('pause-practice').onclick=pause;el('cancel-practice').onclick=pause;el('cancel-resume').onclick=pause;
 el('recalibrate-practice').onclick=calibrate;
 el('cancel-calibration').onclick=()=>calibration.cancel();
-function enterArena(mode:'combat'|'training'='combat'){
-  if(settingsOpen||!controls.calibrated||renderState!=='ready')return;
+// `after` runs once the attempt settles, including after a deferred load of the arena graphics.
+function enterArena(mode:'combat'|'training'='combat',after?:()=>void){
+  if(settingsOpen||!controls.calibrated||renderState!=='ready')return after?.();
   calibration.cancel();pause();if(sim.mode!==mode)resetRound(mode);
-  if(!view){try{view=new ArenaView(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return;}}
-  if(!fx&&!hudClassic&&view.scene){try{fx=new ArenaFx(view.scene,view.renderer);}catch{fx=null;}}
+  if(!view&&!ArenaViewClass){renderMessage='Loading arena graphics…';loadArenaView().then(()=>{renderMessage='';enterArena(mode,after);},()=>{renderMessage='Arena graphics failed to load · check the connection to the preview server, then retry Enter arena.';after?.();});return;}
+  if(!view){try{view=new ArenaViewClass!(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return after?.();}}
+  if(!fx&&!hudClassic&&ArenaFxClass&&view.scene){try{fx=new ArenaFxClass(view.scene,view.renderer);}catch{fx=null;}}
   renderMessage='';stage='arena';showCameraDuringPlay=false;trackingPreview.setVisible(false);
   el('arena').append(el('tracking-preview'));el('paused-settings').append(el('calibration-guide'));el('title-screen').hidden=true;el('setup').hidden=true;el('arena').hidden=false;
   // Mode changes can change canvas height without a window resize event.
   el('arena').classList.toggle('is-training',mode==='training');sizeArena();
-  const scene=el('scene');scene.tabIndex=-1;scene.focus();
+  const scene=el('scene');scene.tabIndex=-1;scene.focus();after?.();
 }
-el('enter').onclick=()=>enterArena();
+el('enter').onclick=()=>enterArena();scheduleArenaPreload();
 el('scene').addEventListener('webglcontextlost',event=>{event.preventDefault();calibration.cancel();renderState='lost';renderMessage='Graphics context lost · simulation frozen. Wait for graphics recovery, then Restart.';keys.clear();qaMissingHands.clear();replayStart=null;pause();});
 el('scene').addEventListener('webglcontextrestored',()=>{if(renderState!=='lost')return;renderState='restart-required';renderMessage='Graphics recovered · Restart is required before resuming.';pause();});
 el('back').onclick=()=>{calibration.cancel();pause();stage='controls';trackingPreview.setVisible(true);el('tracking-home').append(el('tracking-preview'));el('calibration-home').append(el('calibration-guide'));el('arena').hidden=true;showPrepare();};

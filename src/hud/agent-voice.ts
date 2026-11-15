@@ -2,7 +2,8 @@
  * Voice indicator + floating drone status tags (DOM), driven only by hudFeed and
  * read-only Simulation state. Designs: Figma page "Agent & Voice" (VoicePanel, DroneTag).
  */
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import {projectToScreen} from './project';
 import type {Simulation} from '../simulation';
 import type {HudFeed} from './feed';
 import type {AgentPhase, HudSeverity, VoiceStatus} from './contract';
@@ -49,7 +50,6 @@ export function mountAgentVoice(host: HTMLElement, feed: HudFeed, toast: Toast) 
   const tags = new Map<string, {root: HTMLElement; call: HTMLElement; phase: HTMLElement; action: HTMLElement; reason: HTMLElement; sig: string}>();
   host.append(tagLayer, voice);
 
-  const v = new THREE.Vector3();
   let version = -1, run = '', lastEvent = 0;
   const lastPhase = new Map<string, string>();
 
@@ -124,7 +124,7 @@ export function mountAgentVoice(host: HTMLElement, feed: HudFeed, toast: Toast) 
           if (animate) { t.root.classList.remove('hud-tag3d-flash'); void t.root.offsetWidth; t.root.classList.add('hud-tag3d-flash'); }
         }
         if (!camera || !w || !h) { t.root.hidden = true; return; }
-        v.set(f.position.x, 1.6 + Math.sin(sim.tick * .08 + i) * .05 + .75, f.position.y).project(camera);
+        const v = projectToScreen(f.position.x, 1.6 + Math.sin(sim.tick * .08 + i) * .05 + .75, f.position.y, camera);
         const visible = v.z > -1 && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
         t.root.hidden = !visible;
         if (visible) placed.push({root: t.root, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h});

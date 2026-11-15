@@ -1,0 +1,346 @@
+// Renders metrics.json (written by `npm run metrics`) on metrics.html. Reads a static file only; stores and sends nothing.
+import './style.css';
+import './metrics.css';
+import {scorePerformance,type PerformanceRun} from './metrics-score';
+import {compare,gameplayMetrics,type Comparison,type GameplayResult,type Row,type Snapshot,type Value,type VoiceSummary} from './metrics-compare';
+
+interface Metrics {
+  generatedAt:string;version:string;
+  code:{app:{lines:number;files:unknown[]};tests:{lines:number;files:unknown[]}};
+  build:{ok:boolean;seconds:number;warnings:string[]};
+  bundle:{assets:{name:string;kind:string;bytes:number;gzipBytes:number;pages:string[]}[]};
+  tests:{ok:true;totals:{tests:number;passed:number;todo:number;skipped:number};baseline:{size:number;stillFailing:number;nowPassing:string[];newFailures:string[]}}|{ok:false;error:string};
+  performance:{runs:PerformanceRun[]};
+  comparisons?:Comparison[];snapshots?:Snapshot[];
+  bench?:{ok:true;gameplay:GameplayResult[];latencySweep:NonNullable<Snapshot['latencySweep']>;voice:VoiceSummary;gestureLatencyMs:number;roundLimitSeconds:number;supervisor?:{toolCalls:number;succeeded:number;stale:number;invalid:number;tasksCompleted:number;tasksFailed:number};agentSpeed?:{decisionMs:number;dronesOnly:number;withPilot:number}[]}|{ok:false;error:string};
+}
+
+const app=document.querySelector<HTMLDivElement>('#metrics-app')!;
+const esc=(value:unknown)=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]!);
+const num=(value:number)=>value.toLocaleString('en',{maximumFractionDigits:1});
+const kB=(bytes:number)=>`${num(Math.round(bytes/102.4)/10)} kB`;
+const fmt=(value:number,unit:string)=>unit==='%'?`${num(value)}%`:unit.startsWith('/')?num(value):unit?`${num(value)} ${unit}`:num(value);
+const pct=(value:number,max:number)=>max?Math.max(0,Math.min(100,value/max*100)):0;
+const header=`<header><a class="brand" href="/">Starship<span>Mania</span></a><span class="edition">PROJECT METRICS</span><a class="back-link" href="/">← Back to game</a></header>`;
+const section=(id:string,eyebrow:string,title:string,body:string)=>`<section class="m-section reveal" id="${id}" aria-labelledby="${id}-title"><div class="eyebrow">${eyebrow}</div><h2 id="${id}-title">${title}</h2>${body}</section>`;
+const verdictText:Record<Row['verdict'],string>={better:'▲ Better',worse:'▼ Worse',same:'No change',neutral:'Changed',new:'✦ New',pending:'Awaiting'};
+const pill=(verdict:Row['verdict'])=>`<span class="verdict ${verdict}">${verdictText[verdict]}</span>`;
+
+// ── Reusable marks ──────────────────────────────────────────────────────────
+// Animated values start at zero and grow when their section scrolls into view (see animate()).
+
+/** A number that counts up from zero. */
+const count=(value:number,unit='',decimals=0,tag='span')=>`<${tag} data-count="${value}" data-dec="${decimals}" data-unit="${esc(unit)}">${fmt(value,unit)}</${tag}>`;
+
+/** Ring gauge for a score. */
+function ring(value:number,max:number,size=96,tone='after'){
+  const r=size/2-7,c=2*Math.PI*r;
+  return `<svg class="ring ${tone}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${value} out of ${max}">
+   <circle class="ring-track" cx="${size/2}" cy="${size/2}" r="${r}"/>
+   <circle class="ring-value" cx="${size/2}" cy="${size/2}" r="${r}" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${c.toFixed(1)}" data-dash="${(c*(1-value/max)).toFixed(1)}" transform="rotate(-90 ${size/2} ${size/2})"/>
+   <text x="50%" y="50%" dy=".35em" text-anchor="middle" class="ring-text">${count(value,'',0,'tspan')}</text></svg>`;
+}
+
+/** One horizontal bar that grows to its value; a dashed ghost when the value is missing. */
+function bar(value:Value,max:number,side:'before'|'after',unit:string,tip:string){
+  if(typeof value!=='number')return `<div class="hbar"><span class="track"><i class="ghost">${value==='n/a'?'not possible':'awaiting'}</i></span><span class="hval muted">–</span></div>`;
+  return `<div class="hbar" data-tip="${esc(`${tip}: ${fmt(value,unit)}`)}" tabindex="0"><span class="track"><i class="fill ${side}" data-w="${pct(value,max).toFixed(1)}"></i></span><span class="hval">${fmt(value,unit)}</span></div>`;
+}
+const legend=(c:Comparison)=>`<p class="legend"><span><i class="sw before"></i>${esc(c.before.label)}</span><span><i class="sw after"></i>${esc(c.after.label)}</span></p>`;
+const status=(rows:Row[])=>{const done=rows.filter(r=>r.verdict!=='pending').length;return done===rows.length?'<span class="tag done">Measured</span>':`<span class="tag wait">${done?`${done}/${rows.length} measured`:'Awaiting results'}</span>`;};
+/** before → after with a verdict, for numbers that do not need a chart. */
+const delta=(r:Row)=>`<div class="delta" data-tip="${esc(r.note??r.name)}" tabindex="0"><span class="delta-name">${esc(r.name)}</span><span class="delta-values">${typeof r.before==='number'?fmt(r.before,r.unit):r.before==='n/a'?'—':'?'} <b>→</b> ${typeof r.after==='number'?fmt(r.after,r.unit):'?'}</span>${pill(r.verdict)}</div>`;
+
+// ── 1 · AI advantage: the same round with and without the supervisor agent ─────────────────────
+
+const WITHOUT='Pilot + gesture-deployed drones',WITH='Pilot + supervisor agent';
+type Bench=Extract<NonNullable<Metrics['bench']>,{ok:true}>;
+
+function advantageSection(m:Metrics){
+  const b=m.bench?.ok?m.bench as Bench:null;
+  const off=b?.gameplay.find(r=>r.scenario===WITHOUT),on=b?.gameplay.find(r=>r.scenario===WITH);
+  if(!b||!off||!on)return '';
+  const sup=b.supervisor;
+  const faster=Math.round((1-on.seconds/off.seconds)*100);
+  const kpi=(label:string,before:string,after:string,afterValue:number,unit:string,dec:number,change:string,good:boolean,tip:string)=>
+    `<div class="adv-kpi" data-tip="${esc(tip)}" tabindex="0"><span class="adv-label">${label}</span><div class="adv-values"><span class="adv-before">${before}</span><span class="adv-arrow" aria-hidden="true">→</span><strong>${count(afterValue,unit,dec)}</strong></div><span class="adv-change ${good?'good':'bad'}">${change}</span></div>`;
+  const pilotCmds=off.pilotCommands??off.ordersAccepted,agentCmds=on.pilotCommands??0;
+  const kpis=[
+    kpi('Time to clear the arena',fmt(off.seconds,'s'),fmt(on.seconds,'s'),on.seconds,'s',1,faster>=0?`${faster}% faster`:`${-faster}% slower`,faster>=0,`Pilot and drones together. Without the agent the pilot deploys drones by gesture.`),
+    kpi('Drone commands the pilot gives',String(pilotCmds),String(agentCmds),agentCmds,'',0,agentCmds===0?'Just one G press to start':`${pilotCmds-agentCmds} fewer`,agentCmds<pilotCmds,`Without the agent: ${pilotCmds} Deploy gestures, each held for 500 ms while flying. With it: the pilot presses G once to grant autonomy and the agent issues every drone order.`),
+    kpi('Hit accuracy',fmt(off.accuracy,'%'),fmt(on.accuracy,'%'),on.accuracy,'%',1,`${on.accuracy>=off.accuracy?'+':''}${num(Math.round((on.accuracy-off.accuracy)*10)/10)} points`,on.accuracy>=off.accuracy,'Hits ÷ shots for pilot and drones together.'),
+    kpi('Round score',num(off.score),num(on.score),on.score,'/1000',0,`${on.score>=off.score?'+':''}${on.score-off.score} of 1000`,on.score>=off.score,'Targets, speed, health and accuracy, out of 1000.'),
+    sup?`<div class="adv-kpi" data-tip="Every tool call the agent made in a drones-only round" tabindex="0"><span class="adv-label">Agent reliability</span><div class="adv-values"><strong>${count(Math.round(sup.succeeded/Math.max(1,sup.toolCalls)*100),'%')}</strong></div><span class="adv-change good">${sup.succeeded}/${sup.toolCalls} tool calls · ${sup.stale} stale · ${sup.tasksCompleted} tasks done</span></div>`:'',
+  ].join('');
+
+  // Team setups, all with the pilot flying: only the last one uses AI.
+  const setups=[['Pilot alone','Pilot alone'],['Pilot + gesture-deployed drones','Pilot + drones by gesture'],['Pilot + Fire at Will','Pilot + drones on Fire at Will rules'],[WITH,'Pilot + AI supervisor agent']] as const;
+  const rows=setups.map(([name,label])=>({label,r:b.gameplay.find(r=>r.scenario===name),ai:name===WITH})).filter(x=>x.r);
+  const max=Math.max(...rows.map(x=>x.r!.seconds))*1.12;
+  const bars=rows.map(x=>`<div class="bar-row${x.ai?' adv-ai':''}"><span class="bar-name">${x.label}</span><div class="bar-pair">${bar(x.r!.seconds,max,x.ai?'after':'before','s',x.label)}</div></div>`).join('');
+
+  const live=m.performance.runs.flatMap(r=>r.scenarios.filter(s=>/supervisor/i.test(s.name)&&s.clearSeconds).map(s=>({run:r,s})));
+  const liveText=live.length?`Live game check (drones commanded only by the agent): ${live.map(({run,s})=>`${num(s.clearSeconds!)} s at ${num(s.fps)} fps ${/before the hud/i.test(run.label)?'before the HUD':'with the current HUD'}`).join('; ')}. The benchmark predicts ${num(b.gameplay.find(r=>r.scenario==='Supervisor agent drones only')?.seconds??0)} s.${live.some(x=>x.s.fps<58)?' The HUD’s background blur costs frames; a fix is with the UI teammate.':''}`:'';
+
+  return section('advantage','01 / AI ADVANTAGE','What the AI agent adds',`
+   <p class="m-note">The same arena and the same scripted pilot, with drones commanded by gesture or by the AI supervisor agent through its tools. The rounds are deterministic, so every difference comes from the agent.</p>
+   <div class="adv-kpis">${kpis}</div>
+   <div class="adv-charts">
+    <article class="m-card"><div class="card-head"><h3>Clearing the arena with the pilot</h3><span class="tag">lower is better</span></div>
+     <p class="legend"><span><i class="sw before"></i>Without AI</span><span><i class="sw after"></i>With the AI agent</span></p><figure class="chart">${bars}</figure></article>
+    <article class="m-card" id="agent-speed">${agentSpeedExplorer(b,off.seconds,b.gameplay.find(r=>r.scenario==='Pilot + Fire at Will')?.seconds??null)}</article>
+   </div>
+   <p class="m-note adv-honest"><b>Where the agent is not ahead:</b> drones on their own clear faster under Fire at Will rules (${num(b.gameplay.find(r=>r.scenario==='Drones on Fire at Will')?.seconds??0)} s) or with a perfect gesture player (${num(b.gameplay.find(r=>r.scenario==='Gesture-deployed drones only')?.seconds??0)} s) than with the agent alone (${num(b.gameplay.find(r=>r.scenario==='Supervisor agent drones only')?.seconds??0)} s). Its gain is as the pilot’s teammate. The benchmark’s gesture player reacts instantly and never fumbles a gesture, so with real players the agent’s margin should be larger.</p>
+   ${liveText?`<p class="m-note">${esc(liveText)}</p>`:''}`);
+}
+
+/** Line chart plus slider: how fast the agent re-plans vs time to clear with the pilot, against the non-AI setups. */
+function agentSpeedExplorer(b:Bench,gestureSeconds:number,rulesSeconds:number|null){
+  const sweep=b.agentSpeed;if(!sweep?.length)return '';
+  const W=640,H=220,L=40,R=14,T=16,B=32,maxX=sweep.at(-1)!.decisionMs,minX=sweep[0].decisionMs;
+  const ys=[...sweep.map(p=>p.withPilot),gestureSeconds,...(rulesSeconds?[rulesSeconds]:[])];
+  const lo=Math.floor(Math.min(...ys)*2)/2-.5,hi=Math.ceil(Math.max(...ys)*2)/2+.5;
+  const x=(ms:number)=>L+(ms-minX)/(maxX-minX)*(W-L-R),y=(s:number)=>T+(1-(s-lo)/(hi-lo))*(H-T-B);
+  const ticks=[];for(let t=Math.ceil(lo);t<=hi;t+=.5)ticks.push(t);
+  // The higher line labels above itself and the lower one below, so close reference lines never overlap.
+  const ref=(s:number,label:string,cls:string,below=false)=>`<line class="ref ${cls}" x1="${L}" x2="${W-R}" y1="${y(s)}" y2="${y(s)}"/><text class="ref-label" x="${W-R-4}" y="${y(s)+(below?14:-5)}" text-anchor="end">${label} · ${num(s)} s</text>`;
+  const start=Math.max(0,sweep.findIndex(p=>p.decisionMs===1000));
+  return `<div class="card-head"><h3>How fast must the agent think?</h3><span class="tag">pilot + drones · lower is better</span></div>
+   <div class="explorer"><div class="readout" aria-live="polite"><strong id="spd-seconds">–</strong><span id="spd-detail"></span></div>
+    <label class="slider"><span>Agent re-plans every <b id="spd-ms">–</b></span>
+     <input id="spd-input" type="range" min="0" max="${sweep.length-1}" step="1" value="${start}" data-sweep='${esc(JSON.stringify(sweep))}' data-gesture="${gestureSeconds}" data-rules="${rulesSeconds??''}"></label></div>
+   <svg class="sweep" viewBox="0 0 ${W} ${H}" role="img" aria-label="Time to clear with the agent rises from ${sweep[0].withPilot} s when it re-plans every ${minX} ms to ${sweep.at(-1)!.withPilot} s at ${maxX} ms; drones by gesture take ${gestureSeconds} s">
+    ${ticks.filter(t=>ticks.length<=8||t%1===0).map(t=>`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}"/><text class="tick" x="${L-6}" y="${y(t)+4}" text-anchor="end">${t}s</text>`).join('')}
+    ${sweep.map(p=>`<text class="tick" x="${x(p.decisionMs)}" y="${H-10}" text-anchor="middle">${p.decisionMs<1000?p.decisionMs+' ms':p.decisionMs/1000+' s'}</text>`).join('')}
+    ${ref(gestureSeconds,'Drones by gesture (no AI)','gesture',rulesSeconds!==null&&gestureSeconds<rulesSeconds)}${rulesSeconds?ref(rulesSeconds,'Fire at Will rules (no AI)','rules',rulesSeconds<=gestureSeconds):''}
+    <polyline class="line draw" pathLength="1" points="${sweep.map(p=>`${x(p.decisionMs).toFixed(1)},${y(p.withPilot).toFixed(1)}`).join(' ')}"/>
+    ${sweep.map(p=>`<circle class="dot" cx="${x(p.decisionMs)}" cy="${y(p.withPilot)}" r="4.5" data-tip="Re-plans every ${p.decisionMs} ms → ${p.withPilot} s to clear" tabindex="0"/>`).join('')}
+    <circle id="spd-point" class="cursor-dot" r="6" cx="${x(sweep[start].decisionMs)}" cy="${y(sweep[start].withPilot)}" data-xs='${esc(JSON.stringify(sweep.map(p=>x(p.decisionMs))))}' data-ys='${esc(JSON.stringify(sweep.map(p=>y(p.withPilot))))}'/>
+   </svg>`;
+}
+function wireAgentSpeed(){
+  const input=document.querySelector<HTMLInputElement>('#spd-input');if(!input)return;
+  const sweep=JSON.parse(input.dataset.sweep!) as {decisionMs:number;withPilot:number}[],gesture=Number(input.dataset.gesture),rules=input.dataset.rules?Number(input.dataset.rules):null;
+  const point=document.getElementById('spd-point')!,xs=JSON.parse(point.dataset.xs!) as number[],ys=JSON.parse(point.dataset.ys!) as number[];
+  const update=()=>{
+    const i=Number(input.value),p=sweep[i],gap=Math.round((gesture-p.withPilot)*10)/10;
+    document.getElementById('spd-ms')!.textContent=p.decisionMs<1000?`${p.decisionMs} ms`:`${p.decisionMs/1000} s`;
+    document.getElementById('spd-seconds')!.textContent=`${p.withPilot.toFixed(1)} s`;
+    const vsRules=rules===null?'':p.withPilot<rules?' and beats Fire at Will rules':p.withPilot===rules?' and ties Fire at Will rules':', but Fire at Will rules are faster';
+    document.getElementById('spd-detail')!.textContent=gap>0?`to clear · ${gap} s faster than gestures${vsRules}`:gap===0?'to clear · same as gestures':`to clear · ${-gap} s slower than gestures`;
+    point.setAttribute('cx',String(xs[i]));point.setAttribute('cy',String(ys[i]));
+  };
+  input.addEventListener('input',update);update();
+}
+
+// ── 1 · Agent & model ───────────────────────────────────────────────────────
+
+type Ctx={comparisons:Comparison[];snapshots:Snapshot[];runs:PerformanceRun[];bench:Metrics['bench']};
+const snap=(ctx:Ctx,id?:string|null)=>id?ctx.snapshots.find(s=>s.id===id):undefined;
+const rowsOf=(ctx:Ctx,c:Comparison)=>compare(c,ctx.snapshots,ctx.runs);
+
+function voiceCard(ctx:Ctx,c:Comparison){
+  const rows=rowsOf(ctx,c).filter(r=>r.source==='feature'||r.source==='agent');
+  const before=snap(ctx,c.before.snapshot)?.voice,after=snap(ctx,c.after.snapshot)?.voice;
+  const share=(v:VoiceSummary|undefined,kind:string):Value=>{const k=v?.byKind.find(k=>k.kind===kind);return k?Math.round(k.correct/k.phrases*100):null;};
+  const groups=[['clear','Clear commands'],['misheard','Misheard commands'],['not a command','Chatter ignored']].map(([kind,label])=>
+    `<div class="bar-row"><span class="bar-name">${label}</span><div class="bar-pair">${bar(share(before,kind),100,'before','%',`${label} · ${c.before.label}`)}${bar(share(after,kind),100,'after','%',`${label} · ${c.after.label}`)}</div></div>`).join('');
+  const chips=rows.filter(r=>r.unit!=='%'||r.source==='feature').map(delta).join('');
+  return `<article class="m-card"><div class="card-head"><h3>${esc(c.title)}</h3>${status(rows)}</div>${legend(c)}
+   <figure class="chart"><figcaption>Phrases understood, by type</figcaption>${groups}</figure><div class="deltas">${chips}</div></article>`;
+}
+
+/** Supervisor agent: what happened to its tool calls and tasks in the drones-only round. Before it existed, so before is "not possible". */
+function supervisorCard(ctx:Ctx,c:Comparison){
+  const rows=rowsOf(ctx,c).filter(r=>r.source==='agent');
+  const after=snap(ctx,c.after.snapshot)?.supervisor;
+  const before:Value=snap(ctx,c.before.snapshot)?(snap(ctx,c.before.snapshot)!.supervisor?null:'n/a'):null;
+  const max=Math.max(1,after?.toolCalls??0,after?(after.tasksCompleted+after.tasksFailed):0);
+  const line=(label:string,value:number|undefined,tip:string)=>`<div class="bar-row"><span class="bar-name">${label}</span><div class="bar-pair">${bar(before,max,'before','',`${label} · ${c.before.label}`)}${bar(value??null,max,'after','',`${label} · ${tip}`)}</div></div>`;
+  return `<article class="m-card"><div class="card-head"><h3>${esc(c.title)}</h3>${status(rows)}</div>${legend(c)}
+   <figure class="chart"><figcaption>Tool calls and tasks in one drones-only round${after?` · re-plans every ${after.decisionMs/1000} s`:''}</figcaption>
+    ${line('Tool calls succeeded',after?.succeeded,`${after?.succeeded??0} of ${after?.toolCalls??0} calls`)}${line('Calls rejected',after?(after.invalid+after.stale):undefined,'invalid or stale')}${line('Tasks completed',after?.tasksCompleted,'drone tasks finished')}</figure>
+   <div class="deltas">${rows.filter(r=>r.unit==='%'||/failed|stale/i.test(r.name)).map(delta).join('')}</div></article>`;
+}
+
+function agentSection(ctx:Ctx){
+  const cards=ctx.comparisons.filter(c=>c.id!=='lazy-three').map(c=>c.agentBenchmark==='supervisor'?supervisorCard(ctx,c):c.agentBenchmark==='voice'?voiceCard(ctx,c):c.metrics.length?`<article class="m-card"><div class="card-head"><h3>${esc(c.title)}</h3>${status(rowsOf(ctx,c))}</div><div class="deltas">${rowsOf(ctx,c).filter(r=>r.source==='feature').map(delta).join('')}</div></article>`:'').join('');
+  return cards?section('agent','02 / AGENT & MODEL','How well they work',`<div class="grid-2">${cards}</div>`):'';
+}
+
+// ── 2 · Gameplay (interactive) ──────────────────────────────────────────────
+
+function gameplaySection(ctx:Ctx){
+  const withRounds=ctx.comparisons.filter(c=>snap(ctx,c.before.snapshot)?.gameplay);
+  const current=ctx.bench?.ok?ctx.bench:null;
+  if(!withRounds.length&&!current)return '';
+  const metricButtons=gameplayMetrics.map((m,i)=>`<button type="button" class="seg${i?'':' on'}" data-metric="${m.key}" aria-pressed="${!i}">${m.name.replace(' the arena','')}</button>`).join('');
+  const compareButtons=withRounds.map((c,i)=>`<button type="button" class="seg${i?'':' on'}" data-compare="${c.id}" aria-pressed="${!i}">${esc(c.title.replace(' for motion control',''))}</button>`).join('');
+  const sweep=current?.latencySweep??snap(ctx,withRounds[0]?.before.snapshot)?.latencySweep;
+  return section('gameplay','03 / GAMEPLAY','What changes in a round',`
+   <article class="m-card" id="rounds"><div class="controls"><div class="segs" role="group" aria-label="Metric">${metricButtons}</div>${compareButtons?`<div class="segs" role="group" aria-label="Compare">${compareButtons}</div>`:''}</div>
+    <div id="rounds-legend"></div><figure class="chart"><figcaption id="rounds-caption"></figcaption><div id="rounds-bars"></div></figure></article>
+   ${sweep?`<article class="m-card" id="latency">${latencyExplorer(sweep,current?.gestureLatencyMs??500,voiceLatency(ctx))}</article>`:''}`);
+}
+const voiceLatency=(ctx:Ctx)=>{const m=ctx.comparisons.find(c=>c.agentBenchmark==='voice')?.metrics.find(m=>/time to issue/i.test(m.name));return typeof m?.after==='number'?m.after:null;};
+
+/** Redraws the round bars for the chosen metric and comparison. Widths transition, so switching animates. */
+function drawRounds(ctx:Ctx,metricKey:string,compareId:string){
+  const metric=gameplayMetrics.find(m=>m.key===metricKey)??gameplayMetrics[0];
+  const c=ctx.comparisons.find(c=>c.id===compareId);
+  const before=c?snap(ctx,c.before.snapshot)?.gameplay:ctx.bench?.ok?ctx.bench.gameplay:undefined;
+  const after=c?snap(ctx,c.after.snapshot)?.gameplay:undefined;
+  const names=[...new Set([...(before??[]),...(after??[])].map(r=>r.scenario))];
+  const get=(list:GameplayResult[]|undefined,name:string,hasSide:boolean):Value=>{if(!hasSide)return null;const r=list?.find(r=>r.scenario===name);return r?r[metric.key] as number:'n/a';};
+  const values=names.flatMap(n=>[get(before,n,!!before),get(after,n,!!after)]).filter((v):v is number=>typeof v==='number');
+  const max=metric.unit==='%'?100:metric.unit==='/1000'?1000:Math.max(1,...values)*1.1;
+  const host=document.getElementById('rounds-bars');if(!host)return;
+  const existing=new Map([...host.querySelectorAll<HTMLElement>('.bar-row')].map(row=>[row.dataset.name!,row]));
+  host.innerHTML=names.map(n=>`<div class="bar-row" data-name="${esc(n)}"><span class="bar-name">${esc(n)}</span><div class="bar-pair">${bar(get(before,n,!!before),max,'before',metric.unit,`${n} · ${c?.before.label??'Now'}`)}${bar(get(after,n,!!after),max,'after',metric.unit,`${n} · ${c?.after.label??''}`)}</div></div>`).join('');
+  // Start each bar at its previous width so the switch animates instead of jumping.
+  host.querySelectorAll<HTMLElement>('.bar-row').forEach(row=>{const old=existing.get(row.dataset.name!);row.querySelectorAll<HTMLElement>('.fill').forEach((fill,i)=>{const prev=old?.querySelectorAll<HTMLElement>('.fill')[i]?.style.width;fill.style.width=prev||'0%';});});
+  // Before the section has scrolled into view, leave the bars at zero for animate() to grow.
+  if(reduceMotion||host.closest('.reveal')?.classList.contains('shown'))requestAnimationFrame(()=>requestAnimationFrame(()=>host.querySelectorAll<HTMLElement>('[data-w]').forEach(el=>el.style.width=el.dataset.w+'%')));
+  document.getElementById('rounds-caption')!.textContent=`${metric.name} · ${metric.better==='higher'?'higher':'lower'} is better`;
+  document.getElementById('rounds-legend')!.innerHTML=c?legend(c):'';
+}
+
+/** Line chart plus a slider: pick an order delay and read the time to clear with drones only. */
+function latencyExplorer(sweep:NonNullable<Snapshot['latencySweep']>,gestureMs:number,voiceMs:number|null){
+  const W=640,H=210,L=40,R=14,T=14,B=30,maxX=sweep.at(-1)!.latencyMs,maxY=Math.ceil(Math.max(...sweep.map(p=>p.seconds))/10)*10;
+  const x=(ms:number)=>L+ms/maxX*(W-L-R),y=(s:number)=>T+(1-s/maxY)*(H-T-B);
+  const pts=sweep.map(p=>`${x(p.latencyMs).toFixed(1)},${y(p.seconds).toFixed(1)}`).join(' ');
+  const ref=(ms:number,label:string,cls:string,line:number)=>`<line class="ref ${cls}" x1="${x(ms)}" x2="${x(ms)}" y1="${T}" y2="${H-B}"/><text class="ref-label" x="${x(ms)+5}" y="${T+10+line*14}">${label}</text>`;
+  return `<div class="card-head"><h3>Order delay explorer</h3><span class="tag">simulated · drones only</span></div>
+   <div class="explorer"><div class="readout" aria-live="polite"><strong id="lat-seconds">–</strong><span id="lat-detail"></span></div>
+    <label class="slider"><span>Delay from deciding an order to it reaching the drones: <b id="lat-ms">${gestureMs} ms</b></span>
+     <input id="lat-input" type="range" min="0" max="${maxX}" step="25" value="${gestureMs}" data-sweep='${esc(JSON.stringify(sweep))}' data-gesture="${gestureMs}"></label></div>
+   <svg class="sweep" viewBox="0 0 ${W} ${H}" role="img" aria-label="Time to clear rises from ${sweep[0].seconds} s with no delay to ${sweep.at(-1)!.seconds} s at ${maxX} ms">
+    ${Array.from({length:maxY/10+1},(_,i)=>i*10).map(t=>`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}"/><text class="tick" x="${L-6}" y="${y(t)+4}" text-anchor="end">${t}s</text>`).join('')}
+    ${[0,500,1000,2000,3000].filter(t=>t<=maxX).map(t=>`<text class="tick" x="${x(t)}" y="${H-10}" text-anchor="middle">${t<1000?t+' ms':t/1000+' s'}</text>`).join('')}
+    ${ref(gestureMs,'Gesture hold','gesture',0)}${voiceMs!==null?ref(voiceMs,'Voice agent','voice',1):''}
+    <polyline class="line draw" points="${pts}" pathLength="1"/>
+    ${sweep.map(p=>`<circle class="dot" cx="${x(p.latencyMs)}" cy="${y(p.seconds)}" r="4.5" data-tip="${p.latencyMs} ms → ${p.seconds} s to clear" tabindex="0"/>`).join('')}
+    <line id="lat-cursor" class="cursor" x1="0" x2="0" y1="${T}" y2="${H-B}" data-x0="${L}" data-x1="${W-R}" data-max="${maxX}"/>
+    <circle id="lat-point" class="cursor-dot" r="6" cx="0" cy="0" data-t="${T}" data-h="${H-T-B}" data-maxy="${maxY}"/>
+   </svg>`;
+}
+function wireLatency(){
+  const input=document.querySelector<HTMLInputElement>('#lat-input');if(!input)return;
+  const sweep=JSON.parse(input.dataset.sweep!) as {latencyMs:number;seconds:number}[],gesture=Number(input.dataset.gesture);
+  const at=(ms:number)=>{const i=sweep.findIndex(p=>p.latencyMs>=ms);if(i<=0)return sweep[0].seconds;const a=sweep[i-1],b=sweep[i];return a.seconds+(b.seconds-a.seconds)*(ms-a.latencyMs)/(b.latencyMs-a.latencyMs);};
+  const cursor=document.getElementById('lat-cursor')!,point=document.getElementById('lat-point')!;
+  const update=()=>{
+    const ms=Number(input.value),s=at(ms),diff=s-at(gesture);
+    document.getElementById('lat-ms')!.textContent=`${ms} ms`;
+    document.getElementById('lat-seconds')!.textContent=`${s.toFixed(1)} s`;
+    document.getElementById('lat-detail')!.textContent=Math.abs(diff)<.05?'to clear · same as the 500 ms gesture hold':`to clear · ${Math.abs(diff).toFixed(1)} s ${diff<0?'faster':'slower'} than the gesture hold`;
+    const x0=Number(cursor.dataset.x0),x1=Number(cursor.dataset.x1),cx=x0+ms/Number(cursor.dataset.max)*(x1-x0);
+    cursor.setAttribute('x1',String(cx));cursor.setAttribute('x2',String(cx));
+    point.setAttribute('cx',String(cx));point.setAttribute('cy',String(Number(point.dataset.t)+(1-s/Number(point.dataset.maxy))*Number(point.dataset.h)));
+  };
+  input.addEventListener('input',update);update();
+}
+
+// ── 3 · Engineering: before → after dot charts ──────────────────────────────
+
+function engineeringSection(ctx:Ctx){
+  const measured=ctx.comparisons.map(c=>({c,rows:rowsOf(ctx,c).filter(r=>(r.source==='benchmark'||r.source==='snapshot'||(c.id==='lazy-three'&&r.source==='feature'))&&typeof r.before==='number'&&typeof r.after==='number')})).filter(x=>x.rows.length);
+  const waiting=ctx.comparisons.filter(c=>!measured.some(x=>x.c===c)&&(c.after.snapshot===null||c.after.performanceRun===null));
+  const dumbbell=(r:Row)=>{const b=r.before as number,a=r.after as number,max=Math.max(b,a)*1.15||1;
+    return `<div class="db-row"><span class="db-name">${esc(r.name)}</span><span class="db-track"><i class="db-line" style="left:${pct(Math.min(a,b),max)}%;width:${Math.abs(pct(a,max)-pct(b,max))}%"></i><b class="db-dot before" style="left:${pct(b,max)}%" data-tip="Before: ${esc(fmt(b,r.unit))}" tabindex="0"></b><b class="db-dot after" style="left:${pct(b,max)}%" data-left="${pct(a,max)}" data-tip="After: ${esc(fmt(a,r.unit))}" tabindex="0"></b></span><span class="db-val">${fmt(b,r.unit)} → <b>${fmt(a,r.unit)}</b></span>${pill(r.verdict)}</div>`;};
+  const cards=measured.map(({c,rows})=>`<article class="m-card"><div class="card-head"><h3>${esc(c.title)}</h3><span class="tag done">Measured</span></div>${legend(c)}${rows.map(dumbbell).join('')}</article>`).join('');
+  const pending=waiting.length?`<p class="m-note">Awaiting “after” builds: ${waiting.map(c=>esc(c.title)).join(' · ')}</p>`:'';
+  return cards||pending?section('engineering','04 / ENGINEERING','What each change costs',cards+pending):'';
+}
+
+// ── 4–6 · Performance, tests, build ─────────────────────────────────────────
+
+function performanceSection(runs:PerformanceRun[]){
+  const latest=runs.at(-1);if(!latest)return '';
+  const s=scorePerformance(latest);
+  const bars=s.categories.map(c=>`<div class="bar-row"><span class="bar-name">${c.label}</span><div class="hbar" data-tip="${esc(c.basis)}" tabindex="0"><span class="track"><i class="fill after" data-w="${pct(c.points,c.max).toFixed(1)}"></i></span><span class="hval">${c.points}/${c.max}</span></div></div>`).join('');
+  return section('performance','05 / PERFORMANCE',`Score ${s.total} / 100`,`<article class="m-card perf"><div class="perf-ring">${ring(s.total,100,140)}<span class="m-note">${esc(latest.label)}</span></div><figure class="chart">${bars}</figure></article>`);
+}
+
+function testsSection(tests:Metrics['tests']){
+  if(!tests.ok)return section('tests','06 / TESTS','Test results unavailable',`<p class="m-note">${esc(tests.error)}</p>`);
+  const {totals,baseline}=tests,news=baseline.newFailures.length,todo=totals.todo+totals.skipped;
+  const parts=[{label:'Passing',value:totals.passed,cls:'pass'},{label:'Inherited from ProjectZero',value:baseline.stillFailing,cls:'known'},{label:'New failures',value:news,cls:'bad'},{label:'Todo',value:todo,cls:'todo'}];
+  const total=parts.reduce((s,p)=>s+p.value,0),r=54,c=2*Math.PI*r;let offset=0;
+  const arcs=parts.filter(p=>p.value).map(p=>{const len=p.value/total*c,arc=`<circle class="arc ${p.cls}" cx="70" cy="70" r="${r}" stroke-dasharray="0 ${c.toFixed(1)}" data-arc="${Math.max(0,len-2).toFixed(1)} ${(c-len+2).toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 70 70)" data-tip="${p.label}: ${p.value}" tabindex="0"/>`;offset+=len;return arc;}).join('');
+  return section('tests','06 / TESTS',`${num(totals.passed)} passing · ${news} new failures`,`<article class="m-card donut-card">
+   <svg class="donut" width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="${totals.passed} of ${total} tests passing">${arcs}<text x="70" y="66" text-anchor="middle" class="donut-big">${count(Math.round(totals.passed/total*100),'%',0,'tspan')}</text><text x="70" y="86" text-anchor="middle" class="donut-small">passing</text></svg>
+   <ul class="donut-legend">${parts.map(p=>`<li><i class="sw ${p.cls}"></i>${p.label}<b>${p.value}</b></li>`).join('')}</ul>
+   <p class="m-note">The ${baseline.size} inherited failures came with ProjectZero v0.4.3 and are tracked by name, so anything new is counted separately.</p></article>`);
+}
+
+function buildSection(m:Metrics){
+  const game=m.bundle.assets.filter(a=>a.pages.includes('game')||a.pages.length===0);
+  const first=game.filter(a=>a.pages.includes('game')).reduce((s,a)=>s+a.gzipBytes,0),later=game.filter(a=>!a.pages.length).reduce((s,a)=>s+a.gzipBytes,0),total=first+later||1;
+  const ratio=m.code.app.lines?(m.code.tests.lines/m.code.app.lines).toFixed(2):'–';
+  return section('build','07 / BUILD & CODE',`Build ${m.build.ok?'passing':'failing'} in ${m.build.seconds}s`,`<article class="m-card">
+   <figure class="chart"><figcaption>What the game downloads (compressed)</figcaption>
+    <div class="stack"><i class="seg-first" data-w="${pct(first,total).toFixed(1)}" data-tip="At page start: ${kB(first)}" tabindex="0"></i><i class="seg-later" data-w="${pct(later,total).toFixed(1)}" data-tip="Later or on demand (3D engine in the background; voice client only when voice starts): ${kB(later)}" tabindex="0"></i></div>
+    <p class="legend"><span><i class="sw after"></i>At page start · ${kB(first)}</span><span><i class="sw later"></i>Later or on demand · ${kB(later)}</span></p></figure>
+   <div class="m-stats"><div><strong>${count(m.code.app.lines)}</strong><span>lines of game code</span></div><div><strong>${count(m.code.tests.lines)}</strong><span>lines of tests</span></div><div><strong>${ratio}</strong><span>test lines per code line</span></div></div></article>`);
+}
+
+// ── Page assembly and motion ────────────────────────────────────────────────
+
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function countUp(el:HTMLElement){
+  const target=Number(el.dataset.count),dec=Number(el.dataset.dec),unit=el.dataset.unit??'';
+  if(reduceMotion){el.textContent=fmt(target,unit);return;}
+  const start=performance.now(),step=(now:number)=>{const t=Math.min(1,(now-start)/900),v=target*(1-(1-t)**3);el.textContent=fmt(Number(v.toFixed(dec)),unit);if(t<1)requestAnimationFrame(step);};
+  requestAnimationFrame(step);
+}
+function animate(root:Element){
+  root.querySelectorAll<HTMLElement>('[data-w]').forEach(el=>el.style.width=el.dataset.w+'%');
+  root.querySelectorAll<SVGElement>('[data-dash]').forEach(el=>el.setAttribute('stroke-dashoffset',el.dataset.dash!));
+  root.querySelectorAll<SVGElement>('[data-arc]').forEach(el=>el.setAttribute('stroke-dasharray',el.dataset.arc!));
+  root.querySelectorAll<HTMLElement>('[data-left]').forEach(el=>el.style.left=el.dataset.left+'%');
+  root.querySelectorAll('.draw').forEach(el=>el.classList.add('drawn'));
+  root.querySelectorAll<HTMLElement>('[data-count]').forEach(countUp);
+}
+
+function wireTooltip(){
+  const tip=document.createElement('div');tip.className='m-tip';tip.setAttribute('role','tooltip');tip.hidden=true;document.body.append(tip);
+  const show=(target:Element,x?:number,y?:number)=>{tip.textContent=target.getAttribute('data-tip');tip.hidden=false;const r=target.getBoundingClientRect(),px=x??r.left+r.width/2,py=y??r.top;
+    tip.style.left=`${Math.min(innerWidth-tip.offsetWidth-8,Math.max(8,px-tip.offsetWidth/2))}px`;tip.style.top=`${Math.max(8,py-tip.offsetHeight-12)}px`;};
+  document.addEventListener('pointermove',e=>{const t=(e.target as Element).closest?.('[data-tip]');if(t)show(t,e.clientX,e.clientY);else tip.hidden=true;});
+  document.addEventListener('focusin',e=>{const t=(e.target as Element).closest('[data-tip]');if(t)show(t);});
+  document.addEventListener('focusout',()=>{tip.hidden=true;});
+  addEventListener('scroll',()=>{tip.hidden=true;},{passive:true});
+}
+
+function wireRounds(ctx:Ctx){
+  const card=document.getElementById('rounds');if(!card)return;
+  let metric:string=gameplayMetrics[0].key,compareId=card.querySelector<HTMLElement>('[data-compare]')?.dataset.compare??'';
+  const press=(attr:string,value:string)=>card.querySelectorAll<HTMLButtonElement>(`[data-${attr}]`).forEach(b=>{const on=b.dataset[attr]===value;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});
+  card.addEventListener('click',e=>{const b=(e.target as Element).closest<HTMLButtonElement>('button');if(!b)return;
+    if(b.dataset.metric){metric=b.dataset.metric;press('metric',metric);}else if(b.dataset.compare){compareId=b.dataset.compare;press('compare',compareId);}else return;
+    drawRounds(ctx,metric,compareId);});
+  drawRounds(ctx,metric,compareId);
+}
+
+function render(m:Metrics){
+  const ctx:Ctx={comparisons:m.comparisons??[],snapshots:m.snapshots??[],runs:m.performance.runs,bench:m.bench};
+  const nav=[['advantage','AI advantage'],['agent','Agent & model'],['gameplay','Gameplay'],['engineering','Engineering'],['performance','Performance'],['tests','Tests'],['build','Build']].map(([id,label])=>`<a href="#${id}">${label}</a>`).join('');
+  app.innerHTML=`${header}<main class="metrics"><div class="m-intro"><div class="eyebrow">STARSHIPMANIA · BUILT ON PROJECTZERO v${esc(m.version)} · ${esc(new Date(m.generatedAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'}))}</div><h1>Project metrics</h1><nav class="m-nav" aria-label="Sections">${nav}</nav></div>
+   ${advantageSection(m)}${agentSection(ctx)}${gameplaySection(ctx)}${engineeringSection(ctx)}${performanceSection(m.performance.runs)}${testsSection(m.tests)}${buildSection(m)}</main>`;
+  wireTooltip();wireRounds(ctx);wireLatency();wireAgentSpeed();
+  // Sections are drawn after metrics.json loads, so honour a #section link now that the anchor exists.
+  if(location.hash)document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+  if(reduceMotion||!('IntersectionObserver' in window)){document.querySelectorAll('.reveal').forEach(animate);return;}
+  const io=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('shown');animate(e.target);io.unobserve(e.target);}}),{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+}
+
+function renderMissing(reason:string){
+  app.innerHTML=`${header}<main class="metrics"><div class="m-intro"><div class="eyebrow">PROJECT METRICS</div><h1>No metrics collected yet</h1><p class="m-note">${esc(reason)} From the project folder, run <code>npm run metrics</code>, then reload this page.</p></div></main>`;
+}
+
+fetch('./metrics.json',{cache:'no-store'})
+  .then(response=>response.ok?response.json() as Promise<Metrics>:Promise.reject(new Error(`metrics.json was not found (HTTP ${response.status}).`)))
+  .then(render,(error:Error)=>renderMissing(error.message));

@@ -48,7 +48,9 @@ async function setup(search='',prepareKeyboard=true){
   vi.stubGlobal('document',doc);vi.stubGlobal('window',win);vi.stubGlobal('location',{search});
   vi.stubGlobal('HTMLElement',Element);
   vi.stubGlobal('performance',{now:()=>now});vi.stubGlobal('requestAnimationFrame',(cb:FrameRequestCallback)=>{frame=cb;return 1;});
-  await import('../src/main');
+  // The arena graphics load lazily on idle; run that preload now and let it finish, as it does before a real player clicks.
+  const idle=(cb:()=>void)=>{cb();return 0;};Object.assign(win,{requestIdleCallback:idle});vi.stubGlobal('requestIdleCallback',idle);
+  await import('../src/main');await vi.dynamicImportSettled();
   if(!prepareKeyboard)return;
   get('synthetic').click();advance();get('calibrate').click();advance(3020);
   expect(get('enter').disabled).toBe(false);

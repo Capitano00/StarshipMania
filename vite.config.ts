@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
 import {securityHeaders} from './src/security';
 import {voiceSession} from './scripts/voice-session';
+import {droneWorkers} from './scripts/drone-workers';
 
-export function localGameConfig({ ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID }: NodeJS.ProcessEnv) {
+export function localGameConfig(env: NodeJS.ProcessEnv) {
+  const { ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID }=env;
   const enabled = Boolean(ELEVENLABS_API_KEY && /^agent_[a-z0-9]+$/i.test(ELEVENLABS_AGENT_ID ?? ''));
   const headers = enabled ? {
     ...securityHeaders,
@@ -13,7 +15,7 @@ export function localGameConfig({ ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID }: Nod
   return {
     server: local,
     preview: local,
-    plugins: [voiceSession(ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID)],
+    plugins: [voiceSession(ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID),droneWorkers(env)],
     build:{target:'es2022'},
   };
 }

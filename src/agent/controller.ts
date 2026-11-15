@@ -69,7 +69,7 @@ export class AgentController {
   static basis(sim: Pick<Sim, 'runId' | 'controlEpoch'>): DecisionBasis { return {runId: sim.runId, epoch: sim.controlEpoch}; }
 
   /** Validate a model decision against the CURRENT state and turn it into a proposal or an autonomous order. */
-  submit(sim: Sim, action: AgentAction, basis: DecisionBasis): SubmitResult {
+  submit(sim: Sim, action: AgentAction, basis: DecisionBasis, options?: { requireApproval?: boolean }): SubmitResult {
     if (!basis || basis.runId !== sim.runId) return {ok: false, code: 'stale', error: 'Stale decision: the round changed (Retry) since that snapshot. Fetch a new game state.'};
     if (basis.epoch !== sim.controlEpoch) return {ok: false, code: 'stale', error: 'Stale decision: the pilot changed control (Recall, manual order or autonomy) since that snapshot. Fetch a new game state.'};
     if (sim.mode !== 'combat') return {ok: false, code: 'unavailable', error: 'Agent orders are unavailable in guided practice.'};
@@ -82,7 +82,7 @@ export class AgentController {
     // A newer decision replaces older unapproved proposals for the same units.
     for (const p of this.proposals.values()) if (p.status === 'awaiting_approval' && this.unitsOf(p.resolved).some(u => units.includes(u))) this.close(p, 'dismissed', sim.tick, 'Superseded by a newer proposal');
 
-    const autonomous = sim.autonomy.enabled;
+    const autonomous = sim.autonomy.enabled && !options?.requireApproval;
     const taskIds = (resolved.kind === 'squad' ? resolved.assignments.map(a => ({unit: a.unit, kind: 'intercept' as const, target: a.target}))
       : resolved.kind === 'intercept' ? [{unit: resolved.unit, kind: 'intercept' as const, target: resolved.target}]
       : [{unit: resolved.unit, kind: 'recall' as const}]).map(t => this.tasks.propose(sim, {...t, reason}).id);

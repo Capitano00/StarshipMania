@@ -34,21 +34,22 @@ class Element extends EventTarget {
   getContext(){return null;}
   setAttribute(){}
   showModal(){} close(){}
-  querySelector(){return get('eyebrow');} append(){} after(){} focus(){}
+  querySelector(){return get('eyebrow');} append(){} after(){} before(){} focus(){}
 }
 let nodes:Map<string,Element>,doc:EventTarget&{hidden:boolean},win:EventTarget;
 let now:number,frame:FrameRequestCallback;
 function get(id:string){if(!nodes.has(id)){const element=new Element();element.tagName=['move-sensitivity','aim-sensitivity'].includes(id)?'input':['restart','resume','start-practice'].includes(id)?'button':id==='settings-summary'?'summary':'div';nodes.set(id,element);}return nodes.get(id)!;}
 function advance(ms=500){const end=now+ms;while(now<end){now+=Math.min(20,end-now);frame(now);}}
 function key(value:string,type='keydown',target?:Element){const event=new Event(type,{cancelable:true});Object.assign(event,{key:value,repeat:false});if(target)Object.defineProperty(event,'target',{value:target});doc.dispatchEvent(event);return event;}
-async function setup(search=''){
+async function setup(search='',prepareKeyboard=true){
   vi.resetModules();state.failView=false;state.sim=null;state.resize.mockClear();nodes=new Map();now=0;
   doc=Object.assign(new EventTarget(),{hidden:false,getElementById:get,querySelector:()=>get('app'),createElement:()=>new Element()});
-  win=new EventTarget();get('arena').hidden=true;
+  win=new EventTarget();get('arena').hidden=true;get('setup').hidden=true;
   vi.stubGlobal('document',doc);vi.stubGlobal('window',win);vi.stubGlobal('location',{search});
   vi.stubGlobal('HTMLElement',Element);
   vi.stubGlobal('performance',{now:()=>now});vi.stubGlobal('requestAnimationFrame',(cb:FrameRequestCallback)=>{frame=cb;return 1;});
   await import('../src/main');
+  if(!prepareKeyboard)return;
   get('synthetic').click();advance();get('calibrate').click();advance(3020);
   expect(get('enter').disabled).toBe(false);
 }
@@ -57,6 +58,27 @@ beforeEach(()=>setup());
 afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
 
 describe('page lifecycle with synthetic observations and mocked rendering',()=>{
+  it.each([['title-play','combat'],['title-training','training']])('opens %s from a clean start with keyboard and camera off',async(button,mode)=>{
+    await setup('',false);
+    expect(get('title-screen').hidden).toBe(false);
+    expect(get('setup').hidden).toBe(true);
+    get(button).click();advance(20);
+    expect(get('title-screen').hidden).toBe(true);
+    expect(get('setup').hidden).toBe(false);
+    expect(get('prepare-camera').hidden).toBe(true);
+    get('quick-keyboard').click();advance(20);
+    expect(get('arena').hidden).toBe(false);
+    expect(state.sim?.mode).toBe(mode);
+    expect(get('resume-status').textContent).toContain('Starting in');
+    advance(3100);
+    expect(get('tracking-state').textContent).toBe('TRACKING');
+    expect(get('tracking-preview').hidden).toBe(true);
+    expect(get('privacy-mode').textContent).toBe('CAMERA AND MIC OFF');
+    get('menu-title').click();advance(20);
+    expect(get('title-screen').hidden).toBe(false);
+    expect(get('arena').hidden).toBe(true);
+    expect(get('tracking-state').textContent).toBe('PAUSED');
+  });
   it('loss of a remapped initiating hand logs its pending cancellation once, without pausing combat',()=>{
     enter();get('menu-bindings').click();Object.assign(get('binding-deploy'),{value:'Right:Pointing_Up'});get('apply-bindings').click();get('close-settings').click();get('resume').click();advance(3100);
     key('k');advance(300);expect(get('preview-text').textContent).toContain('Confirming');get('loss-synthetic').click();advance(100);expect(state.sim!.events.entries.filter(e=>e.outcome==='Cancelled')).toHaveLength(1);expect(state.sim!.accepted).toBe(0);expect(get('pause-overlay').hidden).toBe(true);
@@ -298,6 +320,8 @@ describe('page lifecycle with synthetic observations and mocked rendering',()=>{
     expect(get('tracking-state').textContent).toBe('PAUSED');key(' ');advance(3100);expect(state.sim!.tick).toBeGreaterThan(tick);
     key('k');advance(400);get('cancel').click();advance();expect(state.sim!.accepted).toBe(0);expect(get('preview-text').textContent).not.toContain('Confirming');
     key('k','keyup');advance(20);key('k');advance(400);key('escape');key('k','keyup');advance();expect(state.sim!.accepted).toBe(0);
+    expect(get('tracking-state').textContent).toBe('PAUSED');get('recall').click();advance();expect(state.sim!.accepted).toBe(0);
+    get('resume').click();advance(3100);
     get('recall').click();advance();expect(state.sim!.order.type).toBe('RECALL');expect(state.sim!.accepted).toBe(1);
     key('r');advance();expect(state.sim!.accepted).toBe(2);
     key(' ');advance();expect(get('tracking-state').textContent).toBe('PAUSED');get('resume').click();advance(3100);expect(get('tracking-state').textContent).toBe('TRACKING');

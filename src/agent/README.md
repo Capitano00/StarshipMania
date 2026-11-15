@@ -140,17 +140,43 @@ async function supervise(goal: string, runTool: (name: string, input: unknown) =
 }
 ```
 
-### ElevenLabs voice agent (already wired)
+### ElevenLabs voice supervisor
 
-`src/voice-recall.ts` (the voice Recall from `main`) passes the seven tools to the same ElevenLabs session as client tools, alongside the guarded `recall_drones`. `main.ts` supplies them through `getSupervisorTools()?.adapters.clientTools()`.
-- `recall_drones` keeps its own phrase, once-only and expiry checks, and can't be replaced.
-- The supervisor tools answer only while that voice session is active.
+Configure a new private, authenticated agent so the existing Recall agent remains available. Register the tools below as **Client** tools with **Wait for response** enabled. Give the planning tool at least 20 seconds to respond so it can accommodate the cloud adapter's 15-second deadline. Publish the test configuration and use that agent's ID in the local launcher. [ElevenLabs client tools](https://elevenlabs.io/docs/eleven-agents/customization/tools/client-tools)
 
-**What you still have to do:** declare the tools you want (same names and parameters as `specs()`) on the published ElevenLabs agent, with **Wait for response** on. The agent can only call tools declared there. This dashboard step hasn't been done or verified by us.
+| Tool | Client parameters |
+| --- | --- |
+| `recall_drones` | None. Only a fresh spoken “Recall drones” or “Recall the drones” authorizes it. |
+| `get_game_state` | Optional integer `event_limit` (0–20). |
+| `plan_drone_assignment` | Required strings `intent` (`direct`, `near`, `far`), `timing` (`now`, `when_feasible`) and `state_token`. For `direct`, provide strings `unit` (`U1` or `U2`) and `target` (`T1`–`T6`). |
+| `get_order_queue` | None. |
+| `request_queue_change` | Required strings `id`, `operation` (`promote` or `cancel`), and `state_token`. |
 
-A spoken Recall (`'local-voice-recall'`) is pilot input. It's an emergency Recall that also switches autonomy off and makes older `state_token`s stale.
+The browser also registers the read-only `get_task_status` and `get_recent_events` tools. Register these only if the agent needs progress reports. The browser's voice action tools require explicit approval in **Orders**, including when the in-game autonomy switch is on.
 
-The tool output strings already state the authority model, for example "Proposed to the pilot…", so the voice agent can explain them truthfully.
+Suggested system prompt:
+
+> You are StarshipMania's voice supervisor for a fictional arena game. If the pilot clearly tells you to recall all drones, call recall_drones. Never call it for a question, a quotation or a negated request. For other orders, read get_game_state before acting and copy its state_token. When the pilot names both a drone and a turret, keep those IDs and use plan_drone_assignment with direct. When the pilot gives a broad far or near turret goal, use far or near and let the two drone workers evaluate it. Use when_feasible only if the pilot asks to defer. For Promote or Cancel, read get_order_queue and request the change by exact ID. Explain any proposed replacement, current task, alternative or unavailable target in a short sentence. Point the pilot to Orders to approve. Only report execution or Recall success if the game confirms it. Never say the drones will fire without the pilot's fire permission.
+
+### Local launch and QA
+
+From the StarshipMania checkout, build and start on a free local port. The launcher prompts for credentials privately.
+
+```powershell
+npm.cmd run build
+& ./scripts/start-voice.ps1 -AgentId agent_YOUR_ID -Port 4186 -DroneWorkerProvider ollama
+```
+
+Ollama must be reachable on loopback, with `qwen3.5:2b-q4_K_M` available. Warm it before the demo. Each drone receives an independent structured request, with the same local model by default. The choices are checked against current route feasibility before the pilot can approve them.
+
+To test the cloud fallback, stop that preview and run the same launcher with `-DroneWorkerProvider openai`. It uses `gpt-5-mini` and reads `OPENAI_API_KEY` server-side, prompting privately when it is missing. If the model is unavailable, direct named assignments and manual Recall remain available.
+
+Check these scenarios in Synthetic Rehearsal or with calibrated hands:
+
+1. Say “Send drone one to turret three.” Verify the exact assignment appears in Orders and executes only after acceptance.
+2. While U1 is busy, say “Take out the turrets at the far end.” Verify the supervisor explains a feasible U2 assignment or says why it could not find one.
+3. Request an exact busy-drone order when feasible. Confirm it and check the waiting row. Try a promotion and cancellation by ID, then verify one confirmed feasible order executes once.
+4. Recall during pending work. Waiting orders must cancel and the late model response must have no effect. Retry clears the round's queue. Repeat live spoken Recall three times in one session and record transcript, tool request and game acceptance.
 
 ## Game-loop wiring (already done in `main.ts`)
 
@@ -163,9 +189,9 @@ agentController.observe(sim);                                         // tasks a
 
 Model calls must never run inside this loop. Your supervisor calls the tools asynchronously, and the loop picks up their effects on the next tick.
 
-## HUD (`feature/ui`)
+## HUD
 
-This branch doesn't contain the `feature/ui` HUD. It shows a minimal approval strip and an "Autonomy ON/OFF / G" button. After both branches merge:
+The tactical HUD supports the existing approval strip and pilot autonomy controls. The Orders tab holds voice proposals and the waiting-order queue. The supervisor HUD bridge still exposes:
 
 ```ts
 import {hudFeed} from './hud/feed';

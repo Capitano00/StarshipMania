@@ -64,6 +64,43 @@ describe('pilot-controlled autonomy', () => {
     expect(s.commandLog[0].reason).toBe('Autonomy disabled');
   });
 
+  it('rejects a queued autonomous assignment on the same tick the pilot revokes autonomy', () => {
+    const s = new Simulation();
+    autonomy(s, true);
+    const pending = env(s, {type: 'INTERCEPT', targetId: 'T3'}, 'U1', 'local-autonomous');
+    const approved = env(s, {type: 'INTERCEPT', targetId: 'T4'}, 'U2', 'local-approved-proposal');
+    s.step(neutralFrame(), [pending, approved], false, [s.intent({type: 'AUTONOMY', enabled: false, fire: false})]);
+    expect(orders(s)).toEqual(['RECALL', 'T4']);
+    expect(s.autonomy).toEqual({enabled: false, fire: false});
+    expect(s.commandLog.find(record => record.commandId === pending.commandId)).toMatchObject({
+      outcome: 'rejected', reason: 'Autonomy disabled',
+    });
+  });
+
+  it('does not revoke autonomy for a stale disable intent', () => {
+    const s = new Simulation();
+    autonomy(s, true);
+    const revoke = s.intent({type: 'AUTONOMY', enabled: false, fire: false});
+    revoke.runId = 'previous-run';
+    s.step(neutralFrame(), [
+      env(s, {type: 'INTERCEPT', targetId: 'T3'}, 'U1', 'local-autonomous'),
+    ], false, [revoke]);
+    expect(orders(s)).toEqual(['T3', 'RECALL']);
+    expect(s.autonomy.enabled).toBe(true);
+  });
+
+  it('probes intercept routes against the actual planner without writing game state', () => {
+    const s = new Simulation();
+    const before = structuredClone(s.funnels);
+    expect(s.canRouteIntercept('U1', 'T3')).toBe(true);
+    expect(s.canRouteIntercept('U9', 'T3')).toBe(false);
+    expect(s.funnels).toEqual(before);
+    expect(s.accept(env(s, {type: 'INTERCEPT', targetId: 'T3'}, 'U1', 'local-approved-proposal'))).toBe(true);
+    expect(s.funnels[0].blocked).toBe(false);
+    s.turrets.find(t => t.id === 'T3')!.health = 0;
+    expect(s.canRouteIntercept('U1', 'T3')).toBe(false);
+  });
+
   it('is a pilot intent: rejected in practice and in the same tick as a manual order', () => {
     const t = new Simulation('p', 'training');
     autonomy(t, true);

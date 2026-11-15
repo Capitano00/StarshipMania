@@ -78,7 +78,7 @@ export class Simulation {
     this.events.add(this.tick,'Booster','Started',p.kind+' / direction locked / no invulnerability');
    }else if(p.type==='AUTONOMY'){
     // Pilot-only grant (intents never come from agent code). Same guards as Fire at Will.
-    if(this.mode==='training'||this.manualCommandTick===this.tick){this.events.add(this.tick,'Autonomy','Rejected',this.mode==='training'?'Unavailable in guided manual practice':'Accepted manual order takes precedence');continue;}
+    if(this.mode==='training'||(p.enabled&&this.manualCommandTick===this.tick)){this.events.add(this.tick,'Autonomy','Rejected',this.mode==='training'?'Unavailable in guided manual practice':'Accepted manual order takes precedence');continue;}
     if(p.enabled&&this.fireAtWill){this.fireAtWill=false;this.directAutofireSuppressed=true;this.events.add(this.tick,'Fire at will','Disabled','Supervisor autonomy enabled');}
     this.setAutonomy(p.enabled,p.enabled&&p.fire,p.enabled?(p.fire?'Agent assignments may move and fire':'Agent assignments may move; fire stays manual'):'Pilot disabled autonomy');
    }else{
@@ -180,8 +180,9 @@ export class Simulation {
   if(this.unitsFor(c.group).some(f=>this.unitRecalledAt.get(f.id)===this.tick))return 'Recall takes precedence';
   if(!this.turrets.some(t=>t.id===p.targetId&&t.health>0))return 'Target no longer available';return null;
  }
- accept(value:unknown){
-  const failure=this.validate(value);if(failure){this.rejected++;this.message=`Rejected: ${failure}`;this.events.add(this.tick,'Command','Rejected',failure);this.record(value,'rejected',failure);return false;}
+ accept(value:unknown,autonomyRevoked=false){
+  const failure=this.validate(value)??(autonomyRevoked&&(value as CommandEnvelope).provenance==='local-autonomous'?'Autonomy disabled':null);
+  if(failure){this.rejected++;this.message=`Rejected: ${failure}`;this.events.add(this.tick,'Command','Rejected',failure);this.record(value,'rejected',failure);return false;}
   const c=value as CommandEnvelope;this.seen.add(c.commandId);this.accepted++;
   const pilot=(pilotProvenances as readonly string[]).includes(c.provenance),autonomous=c.provenance==='local-autonomous';
   // Autonomous agent orders never block same-tick pilot toggles; pilot orders always take control back.
@@ -211,7 +212,7 @@ export class Simulation {
   }
   this.planUnits();return true;
  }
- commands(values:unknown[]){
+ commands(values:unknown[],autonomyRevoked=false){
   // The group Recall is absolute: it wins the whole batch, whatever the queue order.
   const recall=values.find(v=>!!v&&typeof v==='object'&&(v as CommandEnvelope).payload?.type==='RECALL'&&(v as CommandEnvelope).group==='funnels'&&!this.validate(v));
   if(recall){this.accept(recall);for(const other of values.slice(0,8))if(other!==recall){this.rejected++;this.events.add(this.tick,'Command','Rejected','Recall takes precedence');this.record(other,'rejected','Recall takes precedence');}return;}
@@ -220,34 +221,49 @@ export class Simulation {
   const rank=(v:unknown)=>{const c=(v&&typeof v==='object'?v:{}) as Partial<CommandEnvelope>;
    return c.provenance==='local-approved-proposal'?2:c.provenance==='local-autonomous'?3:c.payload?.type==='RECALL'&&c.group!=='funnels'?0:1;};
   const batch=values.slice(0,8).map((v,i)=>({v,i,r:rank(v)})).sort((a,b)=>a.r-b.r||a.i-b.i);
-  for(const {v} of batch)this.accept(v);
+  for(const {v} of batch)this.accept(v,autonomyRevoked);
+ }
+ /** Query the same route planner the simulation uses without altering drone or retry state. */
+ canRouteIntercept(unit:string,targetId:TargetId):boolean{
+  const index=this.funnels.findIndex(f=>f.id===unit),target=this.turrets.find(t=>t.id===targetId&&t.health>0);
+  if(index<0||!target)return false;
+  const desired=this.unitDestination(index,target);
+  return this.planRoute(this.funnels[index],index,desired,target)!==null;
  }
  private planUnits(){this.funnels.forEach((f,i)=>this.planUnit(f,i));}
- private planUnit(f:Funnel,index:number){
-  if(f.blocked&&f.revision===f.assignment&&this.tick<(this.routeRetry.get(f.id)??0))return;
-  const target=f.order.type==='INTERCEPT'?this.turrets.find(t=>t.id===(f.order as {targetId:TargetId}).targetId&&t.health>0):undefined;
-  const desired=target?{x:target.position.x+(index-(this.funnels.length-1)/2)*5,y:target.position.y+3}:{x:this.position.x+(index-(this.funnels.length-1)/2)*3.6,y:this.position.y+1};
-  const tolerance=target?.patrol.length?.30:.05;
-  const routeValid=!f.path[f.waypoint]||clearLine(f.position,f.path[f.waypoint],.55);
-  if(f.revision===f.assignment&&!f.blocked&&length(desired,f.requested)<tolerance&&routeValid&&(!target||f.blocked||clearLine(f.destination,target.position,.17)))return;
-  f.revision=f.assignment;f.requested={...desired};f.path=[];f.waypoint=0;f.blocked=true;
+ private unitDestination(index:number,target?:Turret):Vec2{
+  const offset=index-(this.funnels.length-1)/2;
+  return target?{x:target.position.x+offset*5,y:target.position.y+3}:{x:this.position.x+offset*3.6,y:this.position.y+1};
+ }
+ private planRoute(f:Funnel,index:number,desired:Vec2,target?:Turret):{goal:Vec2;path:Vec2[]}|null{
   const candidates:Vec2[]=[];
   if(target){candidates.push(desired);for(let k=0;k<8;k++){const angle=(k+index*8/this.funnels.length)*Math.PI/4;candidates.push({x:target.position.x+Math.sin(angle)*3.9,y:target.position.y+Math.cos(angle)*3.9});}}
   else{const resolved=freePoint(desired);if(resolved)candidates.push(resolved);}
   for(const goal of candidates){
    if(Math.abs(goal.x)>arenaBounds.unitLimit||Math.abs(goal.y)>arenaBounds.unitLimit||(target&&!clearLine(goal,target.position,.17)))continue;
-   const path=route(f.position,goal);if(!path)continue;
-   f.destination={...goal};f.path=path;f.blocked=false;this.routeRetry.delete(f.id);return;
+   const path=route(f.position,goal);
+   if(path)return {goal,path};
   }
+  return null;
+ }
+ private planUnit(f:Funnel,index:number){
+  if(f.blocked&&f.revision===f.assignment&&this.tick<(this.routeRetry.get(f.id)??0))return;
+  const target=f.order.type==='INTERCEPT'?this.turrets.find(t=>t.id===(f.order as {targetId:TargetId}).targetId&&t.health>0):undefined;
+  const desired=this.unitDestination(index,target);
+  const tolerance=target?.patrol.length?.30:.05;
+  const routeValid=!f.path[f.waypoint]||clearLine(f.position,f.path[f.waypoint],.55);
+  if(f.revision===f.assignment&&!f.blocked&&length(desired,f.requested)<tolerance&&routeValid&&(!target||f.blocked||clearLine(f.destination,target.position,.17)))return;
+  f.revision=f.assignment;f.requested={...desired};f.path=[];f.waypoint=0;f.blocked=true;
+  const plan=this.planRoute(f,index,desired,target);
+  if(plan){f.destination={...plan.goal};f.path=plan.path;f.blocked=false;this.routeRetry.delete(f.id);return;}
   this.routeRetry.set(f.id,this.tick+6);
  }
  private acquireAutomatic(){
   if(!this.fireAtWill)return;
   const candidates=(p:Vec2)=>this.turrets.filter(t=>t.health>0).sort((a,b)=>length(p,a.position)-length(p,b.position)||a.id.localeCompare(b.id));
-  const reachable=(f:Funnel,index:number,t:Turret)=>{const trial:Funnel={...f,order:{type:'INTERCEPT',targetId:t.id},revision:-1,path:[],requested:{...f.requested}};this.planUnit(trial,index);return !trial.blocked;};
   const waiting=this.funnels.filter(f=>f.order.type!=='INTERCEPT'||!this.turrets.some(t=>f.order.type==='INTERCEPT'&&t.id===f.order.targetId&&t.health>0));
   for(const f of waiting){if(this.tick<(this.acquisitionRetry.get(f.id)??0))continue;const index=this.funnels.indexOf(f),reference=this.preferredPolicy==='A'?this.position:f.position;
-   const target=candidates(reference).find(t=>this.preferredPolicy==='A'?this.funnels.every((unit,i)=>reachable(unit,i,t)):reachable(f,index,t));
+   const target=candidates(reference).find(t=>this.preferredPolicy==='A'?this.funnels.every(unit=>this.canRouteIntercept(unit.id,t.id)):this.canRouteIntercept(f.id,t.id));
    if(target){this.assignUnit(f,{type:'INTERCEPT',targetId:target.id},'auto',++this.automaticRevision);this.events.add(this.tick,'Auto assignment','Changed',f.id+' / policy '+this.preferredPolicy,target.id);}
    else{this.assignUnit(f,{type:'RECALL'},'auto',f.assignment);this.acquisitionRetry.set(f.id,this.tick+6);if(f.status!=='Waiting: no reachable eligible target')this.events.add(this.tick,'Auto assignment','Waiting',f.id+' / no reachable eligible target');f.status='Waiting: no reachable eligible target';}
   }
@@ -284,7 +300,10 @@ export class Simulation {
    }else shot.position=end;shot.life--;
   }
   this.projectiles=this.projectiles.filter(s=>s.life>0&&Math.abs(s.position.x)<arenaBounds.projectileLimit&&Math.abs(s.position.y)<arenaBounds.projectileLimit);
-  this.commands(commands);this.applyIntents(intents.filter(intent=>intent?.payload?.type!=='DASH'));
+  const controlIntents=intents.filter(intent=>intent?.payload?.type!=='DASH').slice(0,8);
+  const autonomyRevoked=this.mode==='combat'&&controlIntents.some(intent=>
+   intent?.payload?.type==='AUTONOMY'&&!intent.payload.enabled&&this.validIntent(intent));
+  this.commands(commands,autonomyRevoked);this.applyIntents(controlIntents);
   for(const f of this.funnels)if(f.order.type==='INTERCEPT'&&!this.turrets.some(t=>f.order.type==='INTERCEPT'&&t.id===f.order.targetId&&t.health>0)){
    this.assignUnit(f,{type:'RECALL'},this.fireAtWill?'auto':'manual',f.assignment);this.message='Assigned target cleared - '+(this.fireAtWill?'automatic reselection':'returning, no automatic retarget');this.events.add(this.tick,'Assignment','Changed',f.id+' / '+this.message);
   }

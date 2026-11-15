@@ -3,6 +3,8 @@ import {installInspector,renderCommandReadiness} from './arena-inspector';
 let lastWorldAim:{x:number;y:number}|null=null,lastAimRun='',lastAimEpoch=-1;
 let inspector:ReturnType<typeof installInspector>|null=null;
 import './style.css';
+import './player-interface.css';
+import {keyboardTrainingPrompt,prepareIntro,titleScreen,voiceCommandGuide,type PlayMode} from './player-interface';
 // StarshipMania tactical HUD + arena effects (presentation only; `?classic` restores the original look).
 import type {ArenaFx} from './fx/arena-fx';
 import {mountHud,type HudHandle} from './hud/hud';
@@ -20,6 +22,8 @@ import {ResumeIntent} from './resume-intent';
 import {TrackingPreview} from './tracking-preview';
 import {GuidedCalibration} from './guided-calibration';
 import {AgentController} from './agent/controller';
+import {OrderQueue,type OrderAssignment} from './agent/order-queue';
+import {createVoiceSupervisor} from './agent/voice-supervisor';
 import {getSupervisorTools,installSupervisorRuntime} from './agent/runtime';
 import {connectHud,describeAction} from './agent/hud-bridge';
 import {createVoiceHudBridge} from './hud/voice-bridge';
@@ -28,16 +32,27 @@ import {Controls,type Observation} from './controls';import {Simulation,FixedClo
 const qaEnabled=new URLSearchParams(location.search).has('qa');
 const app=document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML=`
-<header><a class="brand" href="/">P<span>◇</span>Z <small>PROJECTZERO</small></a><span class="edition"><strong class="system-brand">Padisarah</strong>FIRST PLAYABLE <b>v0.4.3</b></span><div class="privacy"><i></i><span id="privacy-mode">LOCAL ONLY · NO RECORDING</span></div><a class="metrics-link" href="/metrics.html" target="_blank" rel="noopener">Metrics ↗</a></header>
-<main><section id="setup" class="setup"><div class="intro"><div class="eyebrow">01 / CONTROLS BEFORE COMBAT</div><h1>Remain the pilot.<br><em>Become the commander.</em></h1><p><strong class="system-introduction">Padisarah · your independent-unit control system.</strong><br>Two hands. One mech. Two Padisarah units.<br>Find a comfortable neutral position, then try each action.</p></div>
-<div class="setup-grid"><article class="card"><span class="step">01</span><h2>Settle in</h2><p>Rest your elbows. Keep both open palms visible and separated, with your left hand on the left. Small movements are enough.</p><div class="buttons"><button id="activate" class="primary">Activate webcam</button><button id="synthetic">Synthetic rehearsal</button></div><p class="fine">Camera is off until you choose to activate it. Images and landmarks stay in memory on this device. Stop or background this page to release the camera.</p><p class="fine">Webcam use is optional and requires local setup. Synthetic rehearsal needs no model or camera permission.</p><div id="source-status" class="status" role="status">Camera off</div><div id="tracking-home"><aside id="tracking-preview" class="tracking-preview" hidden><div class="tracking-heading"><strong>Camera view · mirrored</strong><button id="toggle-camera-preview" hidden>Show camera preview</button></div><canvas id="camera-preview" width="320" height="240" aria-label="Mirrored camera view with detected hand landmarks"></canvas><div id="camera-feedback" role="status" aria-live="polite">Camera off</div><div id="camera-fire" class="fire-status" role="status" aria-live="polite">Blocked · camera off</div><p class="tracking-legend">L = your left hand · R = your right hand. Labels are model estimates; confirm they follow your hands. Amber ? means uncertain. Landmarks show the latest processed sample. The amber highlight follows the configured pilot-fire hand only during accepted fresh fire input.</p></aside></div></article>
-<article class="card"><span class="step">02</span><h2>Capture your neutral</h2><p>Click Check both hands, then show both open palms during the countdown. You have 10 seconds after it to capture your comfortable centre. Checking stays paused; Test controls starts separately.</p><div class="palm-map"><div class="comfort left"><span>L · MOVE</span><i id="left-dot"></i></div><div class="comfort right"><span>R · AIM</span><i id="right-dot"></i></div></div><div id="calibration-home"><section id="calibration-guide"><p id="calibration-guide-status" role="status" aria-live="polite"></p><div class="buttons"><button id="calibrate" class="primary">Check both hands / C</button><button id="cancel-calibration" hidden>Cancel calibration</button></div></section></div><button id="test-controls">Test controls</button><p id="calibration-status" class="fine">Neutral not captured</p></article>
-<article class="card"><span class="step">03</span><h2>Move · shoot · command</h2><p id="setup-control-instructions">Left palm moves. Right palm aims.<br><strong>Right hand: hold a comfortable Closed Fist to shoot; open or change pose to stop.</strong><br>Left hand: hold Pointing Up over a candidate for 0.5 s to send both units. Open or confirm a different pose for 80 ms to rearm; hold Victory for 0.5 s to recall. Keep moving your palms.</p><div id="practice" class="practice"><span class="practice-target">T1</span><i id="practice-reticle" class="crosshair"></i><span id="practice-feedback">Control test paused</span></div><button id="enter" class="primary" disabled>Enter arena →</button><p class="fine">Resume with both hands open first. Each hand supplies only its own input; combat continues through ordinary hand loss. Changing pose or target, opening, or Esc cancels a pending command; R recalls immediately.</p></article></div>
-<p id="arena-error" role="alert" hidden></p><div class="setup-foot"><span>SYNTHETIC REHEARSAL · physical gesture tracking is not validated here</span><button id="probe" hidden>Check local model with blank synthetic frame</button><output id="probe-result"></output></div></section>
+<header><span class="brand">Starship<span>Mania</span></span><div class="privacy"><i></i><span id="privacy-mode">CAMERA AND MIC OFF</span></div><a class="metrics-link" href="/metrics.html" target="_blank" rel="noopener">Metrics ↗</a></header>
+<main>${titleScreen}<section id="setup" class="setup" aria-labelledby="prepare-heading" hidden>${prepareIntro}
+<div class="prepare-choices"><button id="quick-keyboard" class="primary">Play with keyboard</button><button id="activate">Activate webcam</button></div>
+<p class="prepare-choice-note">WASD moves, arrow keys aim, J fires the mech, H fires assigned drones, K deploys and R recalls. Your webcam is optional and processes images on this device.</p>
+<p id="arena-error" role="alert" hidden></p>
+<div id="prepare-launch" class="prepare-launch" hidden><p>Controls ready.</p><button id="enter" class="primary" disabled>Enter arena</button><button id="train" class="primary" disabled hidden>Start training</button></div>
+<div id="prepare-camera" class="setup-grid" hidden><article id="prepare-camera-feed" class="card"><h2>Hand tracking</h2><div id="source-status" class="status" role="status">Camera off</div><div id="camera-actions" class="buttons"></div><div id="tracking-home"><aside id="tracking-preview" class="tracking-preview" hidden><div class="tracking-heading"><strong>Mirrored camera</strong><button id="toggle-camera-preview" hidden>Show camera preview</button></div><canvas id="camera-preview" width="320" height="240" aria-label="Mirrored camera view with detected hand landmarks"></canvas><div id="camera-feedback" role="status" aria-live="polite">Camera off</div><div id="camera-fire" class="fire-status" role="status" aria-live="polite">Blocked · camera off</div><p class="tracking-legend">Check that L and R follow your left and right hands. Amber ? means uncertain.</p></aside></div></article>
+<article id="prepare-calibration" class="card" hidden><h2>Calibrate controls</h2><p>Rest your elbows and show two separated, open palms.</p><div class="palm-map"><div class="comfort left"><span>L · MOVE</span><i id="left-dot"></i></div><div class="comfort right"><span>R · AIM</span><i id="right-dot"></i></div></div><div id="calibration-home"><section id="calibration-guide"><p id="calibration-guide-status" role="status" aria-live="polite"></p><div class="buttons"><button id="calibrate" class="primary">Check both hands / C</button><button id="cancel-calibration" hidden>Cancel calibration</button></div></section></div><button id="test-controls">Test controls</button><p id="calibration-status" class="fine">Neutral not captured</p></article></div>
+<details class="prepare-advanced"><summary>Control test and help</summary><div class="card"><button id="synthetic">Set up keyboard control test</button><p id="setup-control-instructions"></p><div id="practice" class="practice"><span class="practice-target">T1</span><i id="practice-reticle" class="crosshair"></i><span id="practice-feedback">Control test paused</span></div>${voiceCommandGuide}</div></details>
+<div class="setup-foot"><button id="probe" hidden>Check local model with blank synthetic frame</button><output id="probe-result"></output></div></section>
 <section id="arena" hidden><canvas id="scene" aria-label="Third-person mech arena"></canvas><div class="arena-top"><div><div class="eyebrow">02 / LIVE ARENA</div><h2 id="arena-title">Clear all six targets.</h2><small class="shot-legend">Mint: pilot · Lavender: Padisarah · Amber: enemy fire</small></div><div class="stats"><span>MECH <b id="health">100</b><meter id="health-meter" min="0" max="100" value="100"></meter></span><span>TARGETS <b id="remaining">6 / 6</b></span><span>PADISARAH UNITS <b>02</b><small>ONE GROUP</small></span></div></div><div id="reticle" class="crosshair"></div><div id="target-label"></div><div id="pause-overlay"><div class="eyebrow">SIMULATION FROZEN</div><h2 id="pause-title">Ready when you are.</h2><p id="pause-reason">Choose Resume, then open both hands comfortably.</p><button id="resume" class="primary">Resume / Space</button></div><details id="arena-details" class="arena-bottom" open><summary id="arena-details-summary">Unit order and command details</summary><div class="order"><span class="eyebrow system-order">PADISARAH · UNIT ORDER</span><strong id="order-text">FOLLOW</strong><span id="order-message">Padisarah units following</span></div><div class="preview"><span class="eyebrow">COMMAND PREVIEW</span><strong id="preview-text">No command pending</strong><progress id="dwell" max="1500" value="0"></progress></div></details></section>
 <section id="synthetic-help" hidden><b>SYNTHETIC INPUT · camera off</b><span>WASD: left palm · Arrows: right palm · J: pilot fire · H: Padisarah fire · K: deploy · V: recall (active bindings)</span><button id="neutral-synthetic">Open hands at neutral</button><button id="loss-synthetic">Toggle right-hand loss</button></section>
 </main><footer><div><span id="tracking-state">PAUSED</span><span id="metrics">No observations</span><span id="voice-status" role="status"></span></div><nav><button id="pause">Space · pause</button><button id="recall">R · recall</button><button id="voice-toggle" title="Shares microphone audio with ElevenLabs while listening">Start voice</button><button id="cancel">Esc · cancel</button><button id="restart">Restart</button><button id="back">Controls</button><button id="stop">Stop camera</button></nav></footer>`;
 const el=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
+function createVoiceGuide(){
+  const help=document.createElement('div');
+  help.innerHTML=voiceCommandGuide;
+  return help;
+}
+el('camera-actions').append(el('stop'));
+el('back').textContent='Prepare';
 el('calibration-guide').append(el('test-controls'));
 const sensitivityPanel=document.createElement('fieldset');sensitivityPanel.id='sensitivity';sensitivityPanel.innerHTML='<legend>Sensitivity · adjust while paused</legend><label for="move-sensitivity">Move <output id="move-sensitivity-value" for="move-sensitivity">1.0×</output></label><input id="move-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1"><label for="aim-sensitivity">Aim <output id="aim-sensitivity-value" for="aim-sensitivity">1.0×</output></label><input id="aim-sensitivity" type="range" min="0.5" max="2" step="0.1" value="1"><button id="reset-sensitivity">Reset to 1×</button><small>Lower = gentler response · higher = less hand travel. Session only.</small>';el('calibration-guide').append(sensitivityPanel);
 const recovery=document.createElement('button');recovery.id='recover-camera';recovery.textContent='Return to setup to activate camera';recovery.hidden=true;el('pause-overlay').append(recovery);
@@ -51,10 +66,14 @@ const settings=document.createElement('dialog');settings.id='session-settings';s
 const guide=document.createElement('div');guide.innerHTML=gestureCatalogue();el('settings-diagnostics').after(guide);
 const guideButton=document.createElement('button');guideButton.id='open-gesture-guide';guideButton.textContent='Illustrated gesture guide';el('test-controls').after(guideButton);
 const recognitionPanel=document.createElement('fieldset');recognitionPanel.id='recognition-presets';recognitionPanel.innerHTML='<legend>Recognition confidence · adjust while paused</legend>'+(['Left','Right'] as const).map(side=>`<label for="preset-${side}">${side} hand <select id="preset-${side}">${Object.entries(recognitionPresets).map(([name,p])=>`<option value="${name}" ${name==='Balanced'?'selected':''}>${name} (${p.enter.toFixed(2)} / ${p.retain.toFixed(2)})</option>`).join('')}</select></label>`).join('')+'<small>Enter / retain score. Separate from palm sensitivity. Session only.</small>';el('calibration-guide').append(recognitionPanel);
-const settingsButton=document.createElement('button');settingsButton.id='settings';settingsButton.textContent='Settings';el('back').after(settingsButton);
-const trainButton=document.createElement('button');trainButton.id='train';trainButton.textContent='Practise Padisarah';el('enter').after(trainButton);
+const settingsButton=document.createElement('button');settingsButton.id='settings';settingsButton.hidden=true;settingsButton.textContent='Settings';el('back').after(settingsButton);
+el('settings-diagnostics').after(createVoiceGuide());
 const trainingPanel=document.createElement('section');trainingPanel.id='training-panel';trainingPanel.hidden=true;trainingPanel.innerHTML='<strong>PADISARAH TRAINING · no enemy fire · indestructible targets</strong><p id="training-step" role="status" aria-live="polite"></p><p id="training-help"></p><div class="buttons"><button id="retry-training">Retry practice</button><button id="leave-training">Leave practice · enter arena</button></div>';el('arena').append(trainingPanel);
-const resultsPanel=document.createElement('section');resultsPanel.id='results-panel';resultsPanel.hidden=true;resultsPanel.setAttribute('aria-labelledby','results-title');resultsPanel.innerHTML='<div class="eyebrow">ROUND COMPLETE</div><h2 id="results-title"></h2><p id="results-counts"></p><div class="buttons"><button id="play-again" class="primary">Play again</button><button id="results-training">Practise Padisarah</button><button id="results-settings">Settings</button></div>';el('arena').append(resultsPanel);
+const resultsPanel=document.createElement('section');resultsPanel.id='results-panel';resultsPanel.hidden=true;resultsPanel.setAttribute('aria-labelledby','results-title');resultsPanel.innerHTML='<h2 id="results-title"></h2><p id="results-counts"></p><div class="buttons"><button id="play-again" class="primary">Play again</button><button id="results-training">Training</button><button id="results-settings">Settings</button><button id="results-menu">Main menu</button></div>';el('arena').append(resultsPanel);
+const objective=document.createElement('p');
+objective.id='arena-objective';
+objective.textContent='Clear all six targets';
+el('arena').append(objective);
 const hitFeedback=document.createElement('p');hitFeedback.id='hit-feedback';hitFeedback.setAttribute('role','status');el('order-message').after(hitFeedback);
 const controls=new Controls(),clock=new FixedClock(),practiceFeedback=new PracticeFeedback();let sim=new Simulation(),run=1,commandId=0,pending:CommandEnvelope[]=[];
 let session=controls.configuration;let preferredPolicy:DronePolicy='A';let queuedActions:{action:ExtraAction;source:ActionIntent['source']}[]=[];let queuedPolicy:DronePolicy|null=null;
@@ -66,10 +85,22 @@ function refreshBindingGuide(){
  el('settings-control-instructions').textContent=bindingInstructions(session);
 }
 const fillBindings=installBindingSettings(()=>controls.configuration,config=>{if(!controls.setBindings(config))return false;session=controls.configuration;sim.setDirectAutofire();resumeIntent.cancel();calibration.cancel();clearPending();refreshBindingGuide();return true;});
-const pauseActions=document.createElement('div');pauseActions.className='buttons';pauseActions.innerHTML='<button id="menu-retry">Retry round</button><button id="menu-settings">Settings</button><button id="menu-bindings">Gesture bindings</button><button id="menu-guide">Gesture guide</button>';el('resume').after(pauseActions);
+const pauseActions=document.createElement('div');pauseActions.className='buttons';pauseActions.innerHTML='<button id="menu-retry">Retry round</button><button id="menu-settings">Settings</button><button id="menu-bindings">Gesture bindings</button><button id="menu-guide">Gesture guide</button><button id="menu-title">Main menu</button>';el('resume').after(pauseActions);
 const arenaActions=document.createElement('div');arenaActions.id='arena-actions';arenaActions.innerHTML='<button id="arena-pause">Pause / Esc</button><button id="arena-retry">Retry round</button>';el('arena').append(arenaActions);
 // Supervisor agent: proposals need pilot approval (Y / N) unless the pilot grants autonomy (G). See src/agent/README.md.
 const agentController=new AgentController();let queuedAutonomy:{enabled:boolean;source:ActionIntent['source']}|null=null;
+const orderQueue=new OrderQueue();
+orderQueue.reset(sim.runId);
+function approveVoiceAssignment(current:Simulation,assignments:OrderAssignment[],reason:string){
+  const proposal=agentController.submit(current,{kind:'squad',assignments,reason},AgentController.basis(current),{requireApproval:true});
+  return proposal.ok&&agentController.approve(proposal.proposalId,current).ok;
+}
+const voiceSupervisor=createVoiceSupervisor({current:()=>gameplayActive()?sim:null,queue:orderQueue,submit:approveVoiceAssignment,
+  notify:message=>{sim.events.add(sim.tick,'Voice order','Pilot decision',message);}});
+function clearWaitingOrders(){
+  voiceSupervisor.clear();
+  orderQueue.discardImpossible(()=>true);
+}
 installSupervisorRuntime({getSim:()=>stage==='arena'?sim:null,controller:agentController},{exposeGlobal:qaEnabled||new URLSearchParams(location.search).has('supervisor')});
 const autonomyButton=document.createElement('button');autonomyButton.id='autonomy-toggle';autonomyButton.textContent='Autonomy OFF / G';autonomyButton.setAttribute('aria-pressed','false');arenaActions.append(autonomyButton);
 const proposalPanel=document.createElement('section');proposalPanel.id='agent-proposal';proposalPanel.hidden=true;proposalPanel.setAttribute('aria-live','polite');proposalPanel.style.cssText='position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;display:flex;gap:8px;align-items:center;padding:8px 12px;background:#102430f0;border:1px solid #cbb7f4;border-radius:6px;font-size:12px;max-width:min(640px,92%)';
@@ -99,6 +130,7 @@ function renderLog(){
 const resumeIntent=new ResumeIntent(),practiceFire=new PracticeFireFeedback();
 const calibration=new GuidedCalibration();
 let stage:'controls'|'arena'='controls',source:'off'|'camera'|'synthetic'='off',lastEpoch=controls.epoch;
+let prepareMode:PlayMode='combat',cameraSetupRequested=false;
 let diagnosticSample:Observation|null=null;
 let previousPreview:TargetId|null=null,syntheticSeq=0,syntheticAim={x:0,y:0},syntheticLoss=false;const keys=new Set<string>();
 let replayStart:number|null=null,replayCaptured=false,replayResumed=false,replayRecalled=false;
@@ -139,6 +171,7 @@ function recall(source:'local-keyboard-recall'|'local-voice-recall'='local-keybo
   const before=sim.accepted;
   sim.commands([sim.envelope({type:'RECALL'},source,`cmd-${++commandId}`)]);
   if (sim.accepted===before) return false;
+  clearWaitingOrders();
   controls.bindings.manualOverride();
   return true;
 }
@@ -149,6 +182,7 @@ function resetRound(mode:'combat'|'training'){
   // Retire old input and its events against the old run, never against its replacement.
   controls.restart();clearPending();
   resumeIntent.cancel();calibration.cancel();replayStart=null;qaAim=null;sim=new Simulation(`run-${++run}`,mode);sim.preferredPolicy=preferredPolicy;commandId=0;
+  orderQueue.reset(sim.runId);
   keys.clear();qaMissingHands.clear();syntheticAim={x:0,y:0};syntheticLoss=false;clock.reset();resultsShown=false;
 }
 function startRound(mode:'combat'|'training'){
@@ -176,11 +210,55 @@ el('open-gesture-guide').onclick=()=>{openSettings();el('gesture-guide').focus()
 for(const side of ['Left','Right'] as const)el<HTMLSelectElement>(`preset-${side}`).onchange=()=>{if(controls.setRecognition(side,el<HTMLSelectElement>(`preset-${side}`).value as RecognitionPreset)){resumeIntent.cancel();calibration.cancel();clearPending();}};
 el('settings').onclick=openSettings;el('results-settings').onclick=openSettings;el('close-settings').onclick=closeSettings;
 settings.addEventListener('cancel',event=>{event.preventDefault();closeSettings();});
+function showPrepare(mode:PlayMode=prepareMode){
+  prepareMode=mode;
+  const training=mode==='training';
+  el('title-screen').hidden=true;
+  el('setup').hidden=false;
+  el('prepare-heading').textContent=training?'Prepare for training':'Prepare to play';
+  el('prepare-objective').textContent=training?'Practise deployment, firing and Recall with no incoming damage.':'Clear six targets and keep your mech operational.';
+  el('quick-keyboard').textContent=training?'Train with keyboard':'Play with keyboard';
+  el('enter').hidden=training;
+  el('train').hidden=!training;
+  el('prepare-heading').focus();
+}
+function showTitle(){
+  if(stage==='arena')el('back').click();
+  pause();
+  if(source==='camera')el('stop').click();
+  cameraSetupRequested=false;
+  el('setup').hidden=true;
+  el('title-screen').hidden=false;
+  el(prepareMode==='training'?'title-training':'title-play').focus();
+}
+el('title-play').onclick=()=>showPrepare('combat');
+el('title-training').onclick=()=>showPrepare('training');
+el('title-settings').onclick=openSettings;
+el('return-title').onclick=showTitle;
+el('menu-title').onclick=showTitle;
+el('results-menu').onclick=showTitle;
 el('train').onclick=()=>{if(controls.calibrated)startRound('training');};el('results-training').onclick=()=>startRound('training');
 el('retry-training').onclick=()=>startRound('training');el('leave-training').onclick=()=>startRound('combat');el('play-again').onclick=()=>startRound('combat');
 function calibrate(){if(calibration.pending||document.hidden||cameraUnavailable())return;if(!controls.paused){controls.reason='Pause before recentering';return;}pause();calibration.start(performance.now(),controls);}
-el('activate').onclick=()=>{replayStart=null;source='camera';keys.clear();qaMissingHands.clear();controls.calibrated=false;controls.neutral=null;void camera.activate(checkWebcamAssets);};
-el('synthetic').onclick=()=>{camera.stop('Synthetic rehearsal · no camera');source='synthetic';syntheticAim={x:0,y:0};syntheticLoss=false;controls.calibrated=false;controls.neutral=null;keys.clear();qaMissingHands.clear();};
+el('activate').onclick=()=>{
+  if(stage==='controls'&&el('setup').hidden)showPrepare();
+  cameraSetupRequested=true;
+  replayStart=null;source='camera';keys.clear();qaMissingHands.clear();controls.calibrated=false;controls.neutral=null;void camera.activate(checkWebcamAssets);
+};
+function chooseKeyboard(){
+  if(stage==='controls'&&el('setup').hidden)showPrepare();
+  cameraSetupRequested=false;
+  camera.stop('Synthetic rehearsal · no camera');source='synthetic';syntheticAim={x:0,y:0};syntheticLoss=false;controls.calibrated=false;controls.neutral=null;keys.clear();qaMissingHands.clear();
+}
+el('synthetic').onclick=chooseKeyboard;
+el('quick-keyboard').onclick=()=>{
+  if(document.hidden||settingsOpen||stage!=='controls')return;
+  chooseKeyboard();
+  // Keyboard input can establish neutral from a fresh synthetic sample immediately.
+  const now=performance.now();
+  synthetic(now);
+  if(controls.calibrate(now))startRound(prepareMode);
+};
 el('calibrate').onclick=calibrate;el('test-controls').onclick=()=>resume();
 el('start-practice').onclick=()=>resume();el('pause-practice').onclick=pause;el('cancel-practice').onclick=pause;el('cancel-resume').onclick=pause;
 el('recalibrate-practice').onclick=calibrate;
@@ -193,14 +271,15 @@ function enterArena(mode:'combat'|'training'='combat',after?:()=>void){
   if(!view){try{view=new ArenaViewClass!(el<HTMLCanvasElement>('scene'));}catch{renderMessage='WebGL unavailable · arena did not start. Check browser graphics support, then retry Enter arena.';return after?.();}}
   if(!fx&&!hudClassic&&ArenaFxClass&&view.scene){try{fx=new ArenaFxClass(view.scene,view.renderer);}catch{fx=null;}}
   renderMessage='';stage='arena';showCameraDuringPlay=false;trackingPreview.setVisible(false);
-  el('arena').append(el('tracking-preview'));el('paused-settings').append(el('calibration-guide'));el('setup').hidden=true;el('arena').hidden=false;
+  el('arena').append(el('tracking-preview'));el('paused-settings').append(el('calibration-guide'));el('title-screen').hidden=true;el('setup').hidden=true;el('arena').hidden=false;
   // Mode changes can change canvas height without a window resize event.
-  el('arena').classList.toggle('is-training',mode==='training');sizeArena();after?.();
+  el('arena').classList.toggle('is-training',mode==='training');sizeArena();
+  const scene=el('scene');scene.tabIndex=-1;scene.focus();after?.();
 }
 el('enter').onclick=()=>enterArena();scheduleArenaPreload();
 el('scene').addEventListener('webglcontextlost',event=>{event.preventDefault();calibration.cancel();renderState='lost';renderMessage='Graphics context lost · simulation frozen. Wait for graphics recovery, then Restart.';keys.clear();qaMissingHands.clear();replayStart=null;pause();});
 el('scene').addEventListener('webglcontextrestored',()=>{if(renderState!=='lost')return;renderState='restart-required';renderMessage='Graphics recovered · Restart is required before resuming.';pause();});
-el('back').onclick=()=>{calibration.cancel();pause();stage='controls';trackingPreview.setVisible(true);el('tracking-home').append(el('tracking-preview'));el('calibration-home').append(el('calibration-guide'));el('setup').hidden=false;el('arena').hidden=true;};
+el('back').onclick=()=>{calibration.cancel();pause();stage='controls';trackingPreview.setVisible(true);el('tracking-home').append(el('tracking-preview'));el('calibration-home').append(el('calibration-guide'));el('arena').hidden=true;showPrepare();};
 el('recover-camera').onclick=()=>el('back').click();
 for(const kind of ['move','aim'] as const)el<HTMLInputElement>(`${kind}-sensitivity`).addEventListener('input',()=>{const value=Number(el<HTMLInputElement>(`${kind}-sensitivity`).value),current=controls.sensitivity;if(controls.setSensitivity(kind==='move'?value:current.move,kind==='aim'?value:current.aim)){resumeIntent.cancel();calibration.cancel();}});
 el('reset-sensitivity').onclick=()=>{if(controls.setSensitivity(1,1)){resumeIntent.cancel();calibration.cancel();}};
@@ -211,6 +290,7 @@ el('neutral-synthetic').onclick=()=>{syntheticAim={x:0,y:0};keys.clear();qaMissi
 document.addEventListener('keydown',event=>{
   if(event.repeat)return;const key=event.key.toLowerCase();
   if(settingsOpen){if(key==='escape'){event.preventDefault();closeSettings();}return;}
+  if(!el('title-screen').hidden)return;
   if(stage==='arena'&&sim.outcome!=='playing')return;
   // Cancellation remains available while adjusting a native control.
   if(key==='escape'){event.preventDefault();if(stage==='arena'){pause();el('resume').focus();}else cancelCommand();return;}
@@ -279,7 +359,20 @@ function loop(now:number){
   if(queuedAutonomy){intents.push(sim.intent({type:'AUTONOMY',enabled:queuedAutonomy.enabled,fire:queuedAutonomy.enabled},queuedAutonomy.source));queuedAutonomy=null;}
   // Agent envelopes are created here, at the tick they are stepped (fresh id, run and tick); pilot commands still outrank them.
   const agentCommands=agentController.drain(sim);void before;
+  if(gameplayActive()&&sim.tick%15===0&&!commands.length&&!agentCommands.length&&!intents.length){
+    const targetAlive=(target:TargetId)=>sim.turrets.some(t=>t.id===target&&t.health>0);
+    orderQueue.discardImpossible(order=>order.assignments.some(a=>!targetAlive(a.target)));
+    orderQueue.dispatch(order=>order.assignments.every(a=>sim.funnels.some(f=>f.id===a.unit&&f.order.type==='RECALL')&&sim.canRouteIntercept(a.unit,a.target)),order=>{
+      if(!approveVoiceAssignment(sim,order.assignments,order.reason))return false;
+      const batch=agentController.drain(sim);
+      const accepted=sim.accepted;
+      sim.commands(batch);
+      return sim.accepted>accepted;
+    });
+  }
+  const recalls=sim.recalls;
   sim.step(frame,[...commands,...agentCommands],session.autofire&&controls.inputArmed,intents);agentController.observe(sim);
+  if(sim.recalls>recalls)clearWaitingOrders();
   // Acknowledge the pilot's gesture only if one of the PILOT's own commands was accepted.
   if(commands.length)controls.acknowledgeCommand(commands.some(c=>sim.commandLog.some(r=>r.commandId===c.commandId&&r.outcome==='accepted')));});else clock.reset();
   if(stage==='arena'&&(sim.outcome!=='playing'||(sim.mode==='training'&&sim.trainingStep===5))){resumeIntent.cancel();if(!controls.paused){stopVoice();controls.pause(sim.mode==='training'?'Practice complete':sim.message);clearPending();}}
@@ -295,6 +388,17 @@ function loop(now:number){
   for(const [side,id]of [['Left','left-dot'],['Right','right-dot']]as const){const hand=controls.latest?.hands.find(h=>h.side===side);const dot=el(id);dot.style.opacity=hand?'1':'.2';if(hand){const center=controls.neutral?.[side==='Left'?'left':'right']??{x:side==='Left'?.3:.7,y:.5};dot.style.left=`${clamp(50+(hand.palm.x-center.x)*300,5,95)}%`;dot.style.top=`${clamp(50+(hand.palm.y-center.y)*300,10,90)}%`;}}
   const sourceStatus=source==='synthetic'?'Synthetic observations · no camera':camera.status;
   if(el('source-status').textContent!==sourceStatus)el('source-status').textContent=sourceStatus;
+  if(stage==='controls'){
+    el('prepare-camera').hidden=!cameraSetupRequested&&source!=='synthetic';
+    el('prepare-camera-feed').hidden=!cameraSetupRequested;
+    el('prepare-calibration').hidden=cameraUnavailable()||camera.loading;
+    el('prepare-launch').hidden=!controls.calibrated||cameraUnavailable();
+    el('stop').hidden=!camera.active&&!camera.loading;
+    el('activate').textContent=camera.loading?'Connecting webcam…':camera.active?'Reactivate webcam':'Activate webcam';
+    el<HTMLButtonElement>('activate').disabled=camera.loading;
+  }
+  const privacy=voiceRunning()?'VOICE USES ELEVENLABS':camera.active?'CAMERA PROCESSED LOCALLY':'CAMERA AND MIC OFF';
+  if(el('privacy-mode').textContent!==privacy)el('privacy-mode').textContent=privacy;
   el('calibration-status').textContent=(controls.calibrated?'Neutral captured. ':'')+controls.reason;
   for(const kind of ['move','aim'] as const){const input=el<HTMLInputElement>(`${kind}-sensitivity`),value=controls.sensitivity[kind];input.disabled=!controls.paused;input.value=String(value);el(`${kind}-sensitivity-value`).textContent=`${value.toFixed(1)}×`;}
   el<HTMLButtonElement>('reset-sensitivity').disabled=!controls.paused;
@@ -314,13 +418,15 @@ function loop(now:number){
   el<HTMLButtonElement>('enter').disabled=!controls.calibrated||renderState!=='ready';
   el<HTMLButtonElement>('train').disabled=!controls.calibrated||renderState!=='ready';
   el('arena-error').hidden=!renderMessage;el('arena-error').textContent=renderMessage;
-  el('synthetic-help').hidden=source!=='synthetic';el('tracking-state').textContent=controls.paused?'PAUSED':controls.needsRearm?'RECOVERY REQUIRED':controls.latest?'TRACKING':'INPUT NEUTRAL';
+  el('synthetic-help').hidden=source!=='synthetic'||!el('title-screen').hidden;el('tracking-state').textContent=controls.paused?'PAUSED':controls.needsRearm?'RECOVERY REQUIRED':controls.latest?'TRACKING':'INPUT NEUTRAL';
   el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${controls.processingMs.toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}`;
   el('health').textContent=String(sim.health);el<HTMLMeterElement>('health-meter').value=sim.health;el('remaining').textContent=`${sim.turrets.filter(t=>t.health>0).length} / ${sim.turrets.length}`;
   el('order-text').textContent=sim.funnels.map(f=>f.id+': '+(f.order.type==='INTERCEPT'?f.order.targetId:'Follow')+(f.blocked?' Blocked':'')).join(' / ');el('order-text').title=sim.funnels.map(f=>f.id+': '+f.status+' / '+f.origin).join(' / ');el('order-message').textContent=sim.groupState+' / '+sim.message;
   el('hit-feedback').textContent=sim.lastHit&&sim.tick-sim.lastHit.tick<90?`${sim.lastHit.team==='funnel'?'Padisarah':'Pilot'} hit ${sim.lastHit.target} · collision confirmed`:'';
-  el('training-panel').hidden=stage!=='arena'||sim.mode!=='training';el('training-step').textContent=sim.trainingInstruction+([0,2].includes(sim.trainingStep)?' '+actionLabel('deploy'):sim.trainingStep===1?' '+(session.autofire?'AUTO FIRE ON':actionLabel('padisarahFire')):sim.trainingStep===3?' '+actionLabel('recall'):'');
+  el('training-panel').hidden=stage!=='arena'||sim.mode!=='training';
+  el('training-step').textContent=source==='synthetic'?keyboardTrainingPrompt(sim.trainingStep,session.autofire):sim.trainingInstruction+([0,2].includes(sim.trainingStep)?' '+actionLabel('deploy'):sim.trainingStep===1?' '+(session.autofire?'AUTO FIRE ON':actionLabel('padisarahFire')):sim.trainingStep===3?' '+actionLabel('recall'):'');
   el('arena-title').textContent=sim.mode==='training'?'Practise deployment. No combat damage.':'Clear all six targets.';
+  objective.hidden=sim.mode==='training'||sim.outcome!=='playing';
   el('training-help').textContent=controls.paused?(sim.trainingStep===5?'Repeat practice or enter combat when ready.':`Paused · ${resumeIntent.message(now)||controls.reason} · choose Resume when ready.`):sim.message;
   el('retry-training').textContent=sim.trainingStep===5?'Repeat practice':'Retry practice';
   const showResults=stage==='arena'&&sim.outcome!=='playing';el('results-panel').hidden=!showResults;
@@ -359,6 +465,7 @@ function loop(now:number){
       :camera.ready?(controls.paused?'Tracking · arena paused':!controls.inputArmed?'Tracking · open hands to resume':'Tracking')
       :camera.status;
     inspector?.render(sim,lastWorldAim??sim.position,tracking,hands);
+    inspector?.orderQueue?.render(orderQueue.rows(),voiceSupervisor.pending());
     renderVoiceStatus();
   }
   requestAnimationFrame(loop);
@@ -443,7 +550,14 @@ if(qaEnabled){
 }
 if(qaEnabled){el('probe').hidden=false;el('probe').onclick=async()=>{const result=el('probe-result');const button=el<HTMLButtonElement>('probe');if(camera.active||camera.loading){result.textContent='Stop the webcam before this synthetic-only check.';return;}button.disabled=true;const unavailable=await checkWebcamAssets();if(unavailable||camera.active||camera.loading){button.disabled=false;result.textContent=unavailable??'Stop the webcam before this synthetic-only check.';return;}result.textContent='Loading local model · blank synthetic image only';const worker=new Worker('/tracking-worker.js');const timeout=setTimeout(()=>{worker.terminate();button.disabled=false;result.textContent='FAIL: local worker timeout';},30000);worker.onerror=()=>{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent='FAIL: worker error';};worker.onmessage=async({data})=>{if(data.type==='ready'){const canvas=new OffscreenCanvas(640,480);canvas.getContext('2d')!.fillRect(0,0,640,480);const bitmap=canvas.transferToImageBitmap();worker.postMessage({type:'frame',bitmap,epoch:0,sequence:1,capturedAt:performance.now()},[bitmap]);}else{clearTimeout(timeout);worker.terminate();button.disabled=false;result.textContent=data.type==='observation'?`PASS: local model processed blank synthetic image; ${data.hands.length} hands, ${data.processingMs.toFixed(1)} ms (not camera latency)`:'FAIL: '+data.message;}};worker.postMessage({type:'init'});};}
 
-inspector=installInspector(()=>view?.resize(),()=>openSettings())??null;
+inspector=installInspector(()=>view?.resize(),()=>openSettings(),{
+  promote:id=>{if(gameplayActive())orderQueue.promote(id);},
+  cancel:id=>{orderQueue.cancel(id);},
+  confirm:()=>voiceSupervisor.confirm(),
+  defer:()=>voiceSupervisor.confirm(true),
+  dismiss:()=>voiceSupervisor.clear(),
+})??null;
+el('voice-panel')?.append(createVoiceGuide());
 hud=hudClassic?null:mountHud();if(hud&&qaEnabled)Object.assign(globalThis,{__hudFeed:hudFeed});
 // ?hud-demo publishes SIMULATED events and owns the HUD's Accept/Dismiss; the real supervisor bridge is never connected then.
 if(hud&&demoRequested())startHudDemo(hudFeed,el('arena'));else if(hud){hudBridge=connectHud(agentController,hudFeed);voiceHud=createVoiceHudBridge(hudFeed);}
@@ -468,12 +582,19 @@ function renderVoiceStatus(){
 const voiceRecall=createVoiceRecall(() => recall('local-voice-recall'), (state, detail) => {
   voiceState=state;voiceDetail=detail??'';
   voiceButton.textContent=voiceRunning()?'Stop voice':'Start voice';
-  el('privacy-mode').textContent=voiceRunning()?'VOICE USES ELEVENLABS':'LOCAL ONLY · NO RECORDING';
-  if(state==='off'||state==='unavailable')inspector?.voiceTranscript.discardPartial();
+  if(state==='off'||state==='unavailable'){
+    inspector?.voiceTranscript.discardPartial();
+    voiceSupervisor.clear();
+  }
   renderVoiceStatus();voiceHud?.status(state,detail);
 }, event=>{inspector?.voiceTranscript.update(event);voiceHud?.event(event);},
-// The same ElevenLabs agent may also call the seven supervisor tools (proposals / autonomy rules apply; see src/agent/README.md).
-()=>getSupervisorTools()?.adapters.clientTools()??{});
+()=> {
+  const tools=getSupervisorTools()?.adapters.clientTools();
+  return {
+    ...(tools?{get_game_state:tools.get_game_state,get_recent_events:tools.get_recent_events,get_task_status:tools.get_task_status}:{}),
+    ...voiceSupervisor.clientTools(),
+  };
+});
 function stopVoice(){if(voiceState!=='off')voiceRecall.stop();}
 voiceButton.onclick=()=>{
   if(voiceRunning())stopVoice();

@@ -4,11 +4,12 @@ import {barriers} from './cover';
 import type {Simulation} from './simulation';
 import type {Vec2} from './contracts';
 import {installVoiceTranscript} from './voice-transcript';
+import {installOrderQueueHud, type OrderQueueHandlers, type OrderQueuePending, type OrderQueueRow} from './hud/order-queue';
 
 export const mapPoint=(p:Vec2,size:number)=>({x:(p.x+arenaBounds.half)/arenaBounds.width*size,y:(p.y+arenaBounds.half)/arenaBounds.width*size});
 
 /** Presentation only: the full-reveal map never nominates or issues a command. */
-export function installInspector(resize:()=>void,settings:()=>void){
+export function installInspector(resize:()=>void,settings:()=>void,orderHandlers?:OrderQueueHandlers){
  if(typeof ResizeObserver==='undefined')return;
  const get=(id:string)=>document.getElementById(id)!;
  const arena=get('arena'),shell=document.createElement('section');shell.id='arena-shell';
@@ -34,7 +35,12 @@ export function installInspector(resize:()=>void,settings:()=>void){
  get('input-tab').insertAdjacentHTML('afterend','<button id="voice-tab" role="tab" aria-selected="false" aria-controls="voice-panel">Voice</button>');
  get('input-panel').insertAdjacentHTML('afterend','<div id="voice-panel" role="tabpanel" aria-labelledby="voice-tab" hidden><p id="voice-result" role="status">Game · no voice command yet</p><ol id="voice-transcript" aria-label="Voice conversation" tabindex="0"></ol></div>');
  const voiceTranscript=installVoiceTranscript(get('voice-transcript') as HTMLOListElement,get('voice-result'));
- const tabIds=['log','input','voice'] as const;
+ const tabIds: ('log'|'input'|'voice'|'order')[]=['log','input','voice'];
+ if(orderHandlers){
+  get('voice-tab').insertAdjacentHTML('afterend','<button id="order-tab" role="tab" aria-selected="false" aria-controls="order-panel">Orders</button>');
+  get('voice-panel').insertAdjacentHTML('afterend','<div id="order-panel" role="tabpanel" aria-labelledby="order-tab" tabindex="0" hidden></div>');
+  tabIds.push('order');
+ }
  const selectTab=(active:typeof tabIds[number])=>{
   for(const id of tabIds){
    get(`${id}-panel`).hidden=id!==active;
@@ -54,6 +60,18 @@ export function installInspector(resize:()=>void,settings:()=>void){
   };
  }
  selectTab('log');
+ const orderHud=orderHandlers&&installOrderQueueHud(get('order-panel'),orderHandlers);
+ let previousOrderId:string|undefined;
+ const orderQueue=orderHud&&{render(rows:readonly OrderQueueRow[],pending?:OrderQueuePending|null){
+  orderHud.render(rows,pending);
+  if(pending&&pending.id!==previousOrderId){
+   selectTab('order');
+   if(document.body.classList.contains('hud-rail-collapsed'))get('hud-rail-toggle')?.click();
+   const rail=get('arena-inspector');
+   rail.scrollTop=rail.scrollHeight;
+  }
+  previousOrderId=pending?.id;
+ }};
  new ResizeObserver(resize).observe(arena);
  const canvas=get('minimap') as HTMLCanvasElement,ctx=canvas.getContext('2d');
  const render=(sim:Simulation,aim:Vec2,tracking:string,hands:string)=>{
@@ -75,7 +93,7 @@ export function installInspector(resize:()=>void,settings:()=>void){
   const p=dot(sim.position,'#f5f0dd',4),angle=Math.atan2(aim.y-sim.position.y,aim.x-sim.position.x);ctx.strokeStyle='#f5f0dd';ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+Math.cos(angle)*11,p.y+Math.sin(angle)*11);ctx.stroke();
   for(const unit of sim.funnels)if(unit.order.type==='INTERCEPT'){const targetId=unit.order.targetId,t=sim.turrets.find(t=>t.id===targetId&&t.health>0);if(t){const q=mapPoint(t.position,size),from=mapPoint(unit.position,size);ctx.strokeStyle='#d5baff';ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(q.x,q.y);ctx.stroke();ctx.beginPath();ctx.arc(q.x,q.y,8,0,Math.PI*2);ctx.stroke();}}
  };
- return {render,voiceTranscript,showVoice:()=>selectTab('voice')};
+ return {render,voiceTranscript,orderQueue,showVoice:()=>selectTab('voice')};
 }
 
 export function renderCommandReadiness(readiness:Record<CommandAction,CommandReadiness>){

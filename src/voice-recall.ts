@@ -33,20 +33,20 @@ export class RecallTurn {
   }
 }
 
-type ClientToolHandler = (parameters: unknown) => string;
+type ClientToolHandler = (parameters: unknown) => string | Promise<string>;
 
 /**
  * Client tools for one voice session: optional supervisor tools (src/agent/tools.ts, as JSON-string
  * handlers) plus the guarded recall_drones handler. recall_drones can never be replaced, and the
  * supervisor tools answer only while this session is the active one.
  */
-export function voiceClientTools<R>(recallDrones: R, supervisorTools: Record<string, ClientToolHandler> = {}, isActive: () => boolean = () => true): Record<string, ClientToolHandler> & {recall_drones: R} {
-  const tools: Record<string, ClientToolHandler> = {};
+export function voiceClientTools<R, Output extends ReturnType<ClientToolHandler> = string>(recallDrones: R, supervisorTools: Record<string, (parameters: unknown) => Output> = {}, isActive: () => boolean = () => true): Record<string, (parameters: unknown) => Output | string> & {recall_drones: R} {
+  const tools: Record<string, (parameters: unknown) => Output | string> = {};
   for (const [name, handler] of Object.entries(supervisorTools)) {
     if (name === 'recall_drones') continue;
     tools[name] = parameters => isActive() ? handler(parameters) : JSON.stringify({ok: false, code: 'unavailable', error: 'The voice session has ended.'});
   }
-  return {...tools, recall_drones: recallDrones} as unknown as Record<string, ClientToolHandler> & {recall_drones: R};
+  return {...tools, recall_drones: recallDrones} as unknown as Record<string, (parameters: unknown) => Output | string> & {recall_drones: R};
 }
 
 export function createVoiceRecall(

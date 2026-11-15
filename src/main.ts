@@ -175,6 +175,7 @@ const calibration=new GuidedCalibration();
 let stage:'controls'|'arena'='controls',source:'off'|'camera'|'synthetic'='off',lastEpoch=controls.epoch;
 let prepareMode:PlayMode='combat',cameraSetupRequested=false;
 let diagnosticSample:Observation|null=null;
+let cameraDeliveryMs:number|null=null;
 let previousPreview:TargetId|null=null,syntheticSeq=0,syntheticAim={x:0,y:0},syntheticLoss=false;const keys=new Set<string>();
 let replayStart:number|null=null,replayCaptured=false,replayResumed=false,replayRecalled=false;
 let qaAim:TargetId|null=null,qaV02Running=false;
@@ -183,9 +184,16 @@ const video=document.createElement('video');let view:ArenaView|null=null;
 const trackingPreview=new TrackingPreview(el<HTMLCanvasElement>('camera-preview'),el('camera-feedback'));let showCameraDuringPlay=false;
 let renderState:'ready'|'lost'|'restart-required'='ready',renderMessage='';
 let settingsOpen=false,settingsFocus:HTMLElement|null=null,resultsShown=false;
-const camera=new CameraInput(video,()=>controls.epoch,(s,landmarks)=>{diagnosticSample=s;const accepted=controls.ingest(s,performance.now());trackingPreview.observe(s,landmarks,accepted,controls.epoch,controls.recognition);},reason=>{
+const camera=new CameraInput(video,()=>controls.epoch,(s,landmarks)=>{
+  const now=performance.now();
+  diagnosticSample=s;
+  cameraDeliveryMs=Math.round(now-s.capturedAt);
+  const accepted=controls.ingest(s,now);
+  trackingPreview.observe(s,landmarks,accepted,controls.epoch,controls.recognition);
+  if(accepted)updateStartIntents(now);
+},reason=>{
   stopVoice();
-  diagnosticSample=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();
+  diagnosticSample=null;cameraDeliveryMs=null;resumeIntent.cancel();calibration.reset();trackingPreview.clear();controls.pause(reason);clearPending();clock.reset();
 });
 function clearPending(){queuedActions=[];queuedPolicy=null;if(stage==='arena'&&previousPreview&&!controls.inputArmed)sim.events.add(sim.tick,'Deploy / redirect','Cancelled','Control epoch reset',previousPreview);pending=[];previousPreview=null;lastEpoch=controls.epoch;practiceFeedback.clear();if(controls.paused||!controls.inputArmed)sim.stopFire();}
 function logCancellation(detail:string){const command=controls.bindings.pending;if(stage==='arena'&&(command||pending.length)){sim.events.add(sim.tick,command?.type==='RECALL'?'Recall':'Deploy / redirect','Cancelled',detail,command?.type==='INTERCEPT'?command.targetId:null);previousPreview=null;}}
@@ -368,12 +376,18 @@ function readinessCondition(id:string,label:string,ready:boolean,detail=''){
   const node=el(id);node.textContent=`${ready?'Ready':'Needs attention'} · ${label}${detail?' · '+detail:''}`;node.classList.toggle('is-ready',ready);
 }
 function fireStatus(id:string,text:string){const node=el(id);node.textContent=text;node.classList.toggle('is-held',text.startsWith('Fire input held'));node.classList.toggle('is-blocked',text.startsWith('Blocked'));}
-function loop(now:number){
-  if(!document.hidden){if(source==='synthetic')synthetic(now);else if(source==='camera')void camera.pump();}
-  if(lastEpoch!==controls.epoch)clearPending();
-  if(!document.hidden)calibration.update(now,controls);
+function updateStartIntents(now:number){
+  if(document.hidden)return;
+  calibration.update(now,controls);
   if(resumeIntent.pending&&!canRequestResume())resumeIntent.cancel();
-  if(!document.hidden)resumeIntent.update(now,controls);
+  resumeIntent.update(now,controls);
+}
+function loop(frameTime:number){
+  // A camera callback can capture between the render timestamp and the start of this frame.
+  const now=source==='camera'?performance.now():frameTime;
+  if(!document.hidden&&source==='synthetic')synthetic(now);
+  if(lastEpoch!==controls.epoch)clearPending();
+  updateStartIntents(now);
   // Previous frame's preview has had a paint opportunity; start conservative visible dwell now.
   if(!document.hidden&&now-lastDraw<200)controls.markRendered(previousPreview,now);
   if(lastAimRun!==sim.runId||lastAimEpoch!==controls.epoch){lastWorldAim=null;lastAimRun=sim.runId;lastAimEpoch=controls.epoch;}
@@ -458,7 +472,7 @@ function loop(now:number){
   el<HTMLButtonElement>('train').disabled=!controls.calibrated||renderState!=='ready';
   el('arena-error').hidden=!renderMessage;el('arena-error').textContent=renderMessage;
   el('synthetic-help').hidden=source!=='synthetic'||!el('title-screen').hidden;el('tracking-state').textContent=controls.paused?'PAUSED':controls.needsRearm?'RECOVERY REQUIRED':controls.latest?'TRACKING':'INPUT NEUTRAL';
-  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${controls.processingMs.toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}`;
+  el('metrics').textContent=`${source==='synthetic'?'Synthetic · ':''}processing ${controls.processingMs.toFixed(1)} ms · sample age ${controls.latest?Math.max(0,now-controls.latest.capturedAt).toFixed(0):'—'} ms · tracking pauses ${controls.trackingPauses}${source==='camera'&&cameraDeliveryMs!==null?' · capture to result '+cameraDeliveryMs+' ms':''}`;
   el('health').textContent=String(sim.health);el<HTMLMeterElement>('health-meter').value=sim.health;el('remaining').textContent=`${sim.turrets.filter(t=>t.health>0).length} / ${sim.turrets.length}`;
   el('order-text').textContent=sim.funnels.map(f=>f.id+': '+(f.order.type==='INTERCEPT'?f.order.targetId:'Follow')+(f.blocked?' Blocked':'')).join(' / ');el('order-text').title=sim.funnels.map(f=>f.id+': '+f.status+' / '+f.origin).join(' / ');el('order-message').textContent=sim.groupState+' / '+sim.message;
   el('hit-feedback').textContent=sim.lastHit&&sim.tick-sim.lastHit.tick<90?`${sim.lastHit.team==='funnel'?'Padisarah':'Pilot'} hit ${sim.lastHit.target} · collision confirmed`:'';
@@ -578,7 +592,7 @@ if(qaEnabled){
       stream=canvas.captureStream(30);const syntheticStream=stream;const syntheticVideo=document.createElement('video');
       await new Promise<void>((resolve,reject)=>{
         probe=new CameraInput(syntheticVideo,()=>0,()=>{if(++observations>=3)resolve();},reason=>{if(reason!=='Starting camera'&&reason!=='Synthetic check complete')reject(new Error('synthetic capture stopped'));},{media:{getUserMedia:async()=>syntheticStream},createWorker:()=>new Worker('/tracking-worker.js'),bitmap:captureBitmap,now:()=>performance.now(),hidden:()=>document.hidden});
-        let frame=0;timer=setInterval(()=>{context.fillStyle=++frame%2?'#101010':'#202020';context.fillRect(0,0,640,480);void probe!.pump();},33);
+        let frame=0;timer=setInterval(()=>{context.fillStyle=++frame%2?'#101010':'#202020';context.fillRect(0,0,640,480);},33);
         timeout=setTimeout(()=>reject(new Error('synthetic capture timeout')),30000);void probe.activate();
       });
       result.textContent=`${corrected&&observations>=3?'PASS':'FAIL'} native capture: old receiver=${oldResult}; corrected canvas=${corrected}; detached video observations=${observations}; real local worker; hardware camera off`;
